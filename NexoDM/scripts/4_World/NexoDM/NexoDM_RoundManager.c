@@ -967,7 +967,13 @@ class NexoDM_RoundManager : Managed
                 EquipPlayer(player, entry.role);
             }
             ApplyRoleToPlayer(player, entry.role);
+            return;
         }
+
+        // F1 (was m_PendingPublicCleanup, GG-07/F-22): a participant who logged out during a round and
+        // reconnects after it ended gets the same PlayerBase back with its synced role still PARTICIPANT;
+        // reset it so the client does not keep the scoreboard open and polling while IDLE.
+        ApplyRoleToPlayer(player, NexoDM_Role.NONE);
 #endif
     }
 
@@ -1512,14 +1518,20 @@ class NexoDM_RoundManager : Managed
         if (steamId == string.Empty)
             return false;
 
+        if (m_State != NexoDM_State.ACTIVE)
+            return false;
+
+        // F1: with no public role, a player joining an ACTIVE round is a participant from birth, so
+        // enroll them here and they are born at the arena already equipped (GG-01v5), instead of being
+        // born at a vanilla spawn and teleported + re-equipped on the next tick by OnPlayerReady.
         NexoDM_PlayerEntry entry = GetEntry(steamId);
         if (!entry)
-            return false;
+        {
+            entry = GetOrCreateEntry(steamId);
+            entry.role = NexoDM_Role.PARTICIPANT;
+        }
 
         if (entry.role != NexoDM_Role.PARTICIPANT)
-            return false;
-
-        if (m_State != NexoDM_State.ACTIVE)
             return false;
 
         if (!EnsureConfig())
