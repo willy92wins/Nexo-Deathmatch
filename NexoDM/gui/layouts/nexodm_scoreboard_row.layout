@@ -1,0 +1,75 @@
+FrameWidgetClass Row {
+ position 0 0
+ size 1 0.10
+ hexactpos 0
+ vexactpos 0
+ hexactsize 0
+ vexactsize 0
+ {
+  ImageWidgetClass RowBg {
+   position 0 0
+   size 1 1
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   ignorepointer 1
+   color 0 0 0 0
+  }
+  TextWidgetClass RankText {
+   position 0.045 0.1
+   size 0.025 0.8
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   ignorepointer 1
+   text "1"
+   color 0.66 0.65 0.61 1
+  }
+  TextWidgetClass NameText {
+   position 0.07 0.1
+   size 0.36 0.8
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   ignorepointer 1
+   text "Player"
+   color 0.89 0.88 0.84 1
+  }
+  TextWidgetClass KText {
+   position 0.78 0.1
+   size 0.07 0.8
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   ignorepointer 1
+   text "0"
+   color 0.89 0.88 0.84 1
+  }
+  TextWidgetClass AText {
+   position 0.86 0.1
+   size 0.07 0.8
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   ignorepointer 1
+   text "0"
+   color 0.66 0.65 0.61 1
+  }
+  TextWidgetClass DText {
+   position 0.93 0.1
+   size 0.07 0.8
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   ignorepointer 1
+   text "0"
+   color 0.47 0.46 0.43 1
+  }
+ }
+}

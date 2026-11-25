@@ -1,0 +1,2080 @@
+class NexoDM_PlayerEntry : Managed
+{
+    string steamId;
+    int role;
+    int kills;
+    int assists;
+    int deaths;
+    ref set<string> damagedBy;
+    bool lastDamageWasKnife;
+    int lastKnifeHitTimeMs;     // S5.5 KB1-B obs
+    string lastKnifeKillerId;   // E2 kill-credit fallback (scripted knife death -> EEKilled killer=null)
+    string lastAttackerId;      // Option A: last participant who damaged this player (any weapon); credits the "downer" when the death reports no killer (respawn-suicide while KO / bleed-out)
+    int lastAttackerTimeMs;     // GetTime() of the lastAttackerId hit; recency-gated by ATTACKER_CREDIT_WINDOW_MS
+
+    void NexoDM_PlayerEntry()
+    {
+        steamId = string.Empty;
+        role = NexoDM_Role.NONE;
+        kills = 0;
+        assists = 0;
+        deaths = 0;
+        damagedBy = new set<string>();
+        lastDamageWasKnife = false;
+        lastKnifeHitTimeMs = 0;     // S5.5 KB1-B obs
+        lastKnifeKillerId = string.Empty;
+        lastAttackerId = string.Empty;
+        lastAttackerTimeMs = 0;
+    }
+}
+
+/*
+Round flow:
+IDLE | admin start or autostart with valid config | ACTIVE | every connected player becomes a participant, BeginRound.
+IDLE | start with invalid config | IDLE | fail closed.
+ACTIVE | connect or reconnect without entry | ACTIVE | role PARTICIPANT.
+ACTIVE | timeout or admin stop | ENDED | then IDLE.
+*/
+class NexoDM_RoundManager : Managed
+{
+    protected static ref NexoDM_RoundManager s_Instance;
+
+    protected int m_State;
+    protected ref NexoDM_Config m_Config;
+    protected ref Timer m_RoundTimer;
+    protected ref Timer m_EndStateTimer;
+    protected ref Timer m_FreezeTimer;
+    protected ref Timer m_AutostartTimer;
+    protected ref map<string, ref NexoDM_PlayerEntry> m_PlayerEntries;
+    protected ref map<string, int> m_WarnLog;
+    // GG-01v5: steamIds whose fresh respawn character was equipped DURING creation
+    // (StartingEquipSetup -> EquipParticipantAtBirth). OnPlayerRespawn consumes this to skip the
+    // post-creation teleport+wipe+equip path that desynced the loadout to observers.
+    protected ref set<string> m_GG_BirthEquipped;
+    protected int m_SpawnRoundRobinIdx;
+
+    void NexoDM_RoundManager()
+    {
+#ifdef SERVER
+        m_State = NexoDM_State.IDLE;
+        m_RoundTimer = new Timer();
+        m_EndStateTimer = new Timer();
+        m_FreezeTimer = new Timer();
+        m_AutostartTimer = new Timer();
+        m_PlayerEntries = new map<string, ref NexoDM_PlayerEntry>;
+        m_WarnLog = new map<string, int>;
+        m_GG_BirthEquipped = new set<string>();
+        m_SpawnRoundRobinIdx = 0;
+#endif
+    }
+
+    static NexoDM_RoundManager GetInstance()
+    {
+#ifdef SERVER
+        // R2: GetGame() in scripts/3_game/gameplay.c:636; DayZGame.IsDedicatedServer() in scripts/3_game/global/game.c:1127.
+        DayZGame game = GetGame();
+        if (!game)
+            return null;
+
+        if (!game.IsDedicatedServer())
+            return null;
+
+        if (!s_Instance)
+        {
+            s_Instance = new NexoDM_RoundManager();
+            s_Instance.Init();
+        }
+
+        return s_Instance;
+#else
+        return null;
+#endif
+    }
+
+    void Init()
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        EnsureCollections();
+        EnsureTimers();
+#endif
+    }
+
+    void StartGame()
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (m_State != NexoDM_State.IDLE)
+        {
+            string ignoredMessage = "start ignored: round is not idle";
+            LogRound(ignoredMessage);
+            return;
+        }
+
+        StopTimer(m_EndStateTimer);
+        // A start (manual or automatic) consumes any armed autostart attempt; ReturnToIdle
+        // re-arms the unsupervised loop when the round is over.
+        StopTimer(m_AutostartTimer);
+
+        // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:25.
+        m_Config = NexoDM_Config.Load();
+        if (!m_Config)
+        {
+            string loadMessage = "start rejected: config load failed";
+            LogRound(loadMessage);
+            m_State = NexoDM_State.IDLE;
+            return;
+        }
+
+        // R2: NexoDM_Config.Validate() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:87.
+        if (!m_Config.Validate())
+        {
+            string validateMessage = "start rejected: config validation failed";
+            LogRound(validateMessage);
+            m_State = NexoDM_State.IDLE;
+            return;
+        }
+
+        // F-13/F-14: surface leftover placeholder config (admin 7656XXXX / default presets / default
+        // coords) in the RPT at round start, so a half-configured install is diagnosable.
+        m_Config.LogPlaceholderWarnings();
+
+        ResetStats();
+        // F-20v2: reset the "last spawn coord used" tracker at round start (spawn pick is now
+        // uniform-random, not round-robin — see PickRandomSpawn).
+        m_SpawnRoundRobinIdx = 0;
+        EnrollConnectedParticipants();
+        m_State = NexoDM_State.ACTIVE;
+        BeginRound();
+        string startedMessage = "round entered active";
+        LogRound(startedMessage);
+#endif
+    }
+
+    void EndRound(string reason, string winnerSteamId)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (m_State == NexoDM_State.IDLE)
+        {
+            string idleMessage = "end ignored: already idle";
+            LogRound(idleMessage);
+            return;
+        }
+
+        if (m_State == NexoDM_State.ENDED)
+        {
+            string endedMessage = "end ignored: already ended";
+            LogRound(endedMessage);
+            return;
+        }
+
+        // Capture state before flipping to ENDED: only a round that reached ACTIVE announces a winner.
+        bool wasActive = (m_State == NexoDM_State.ACTIVE);
+
+        StopTimer(m_RoundTimer);
+        StopTimer(m_EndStateTimer);
+        StopTimer(m_FreezeTimer);
+
+        m_State = NexoDM_State.ENDED;
+        RevertFreezeIfApplied();
+
+        if (wasActive)
+        {
+            // Winner announce must run while entries still exist; ReturnToIdle
+            // clears them 0.1s after ScheduleIdleReset below.
+            AnnounceWinner(reason, winnerSteamId);
+        }
+
+        // Drop the synced participant role so the scoreboard gate closes with the round.
+        EnsureCollections();
+        int roleIndex = 0;
+        for (roleIndex = 0; roleIndex < m_PlayerEntries.Count(); roleIndex = roleIndex + 1)
+        {
+            NexoDM_PlayerEntry roleEntry = m_PlayerEntries.GetElement(roleIndex);
+            if (roleEntry && roleEntry.role != NexoDM_Role.NONE)
+            {
+                string roleSteamId = m_PlayerEntries.GetKey(roleIndex);
+                ApplyRoleToOnlinePlayer(roleSteamId, NexoDM_Role.NONE);
+            }
+        }
+
+        string safeReason = reason;
+        if (safeReason == string.Empty)
+            safeReason = "unknown";
+
+        string message = "round ended: ";
+        message = message + safeReason;
+        LogRound(message);
+        ScheduleIdleReset();
+#endif
+    }
+
+    int GetState()
+    {
+        return m_State;
+    }
+
+    array<string> GetParticipantIds()
+    {
+        array<string> ids = new array<string>();
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (entry && entry.role == NexoDM_Role.PARTICIPANT)
+            {
+                string steamId = m_PlayerEntries.GetKey(index);
+                ids.Insert(steamId);
+            }
+        }
+#endif
+        return ids;
+    }
+
+    // F-01: an entry only counts while its player is actually connected. A disconnected
+    // participant's entry persists (entries are purged only on round reset), so liveness must be
+    // checked at read time to avoid ghost slots / leaders / winners. O(players) per call; the
+    // round is capped at MaxPlayers so the O(P^2) in the read loops below is trivial (P2-4 accepted).
+    protected bool IsEntryOnline(NexoDM_PlayerEntry e)
+    {
+#ifdef SERVER
+        if (!e)
+            return false;
+        if (e.steamId == string.Empty)
+            return false;
+        return FindPlayerBySteamId(e.steamId) != null;
+#else
+        return false;
+#endif
+    }
+
+    int CountParticipants()
+    {
+        int count = 0;
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (entry && entry.role == NexoDM_Role.PARTICIPANT && IsEntryOnline(entry))
+                count = count + 1;
+        }
+#endif
+        return count;
+    }
+
+    bool IsAdminSteamId(string steamId)
+    {
+#ifdef SERVER
+        if (steamId == string.Empty)
+            return false;
+
+        if (!EnsureConfig())
+            return false;
+
+        // R2: NexoDM_Config.GetAdmins() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:152.
+        array<string> admins = m_Config.GetAdmins();
+        if (!admins)
+            return false;
+
+        int adminIndex = 0;
+        for (adminIndex = 0; adminIndex < admins.Count(); adminIndex = adminIndex + 1)
+        {
+            string adminId = admins.Get(adminIndex);
+            if (adminId == steamId)
+                return true;
+        }
+#endif
+        return false;
+    }
+
+    void ResetStats()
+    {
+#ifdef SERVER
+        EnsureCollections();
+        m_PlayerEntries.Clear();
+#endif
+    }
+
+    void BeginRound()
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+
+        if (!EnsureConfig())
+        {
+            string noConfigMessage = "begin round rejected: config unavailable";
+            LogRound(noConfigMessage);
+            return;
+        }
+
+        EnsureTimers();
+        EnsureCollections();
+        StopTimer(m_FreezeTimer);
+
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry)
+                continue;
+
+            if (entry.role == NexoDM_Role.NONE)
+                continue;
+
+            PlayerBase player = FindPlayerBySteamId(entry.steamId);
+            if (!player)
+            {
+                string missingMessage = "begin skipped disconnected player ";
+                missingMessage = missingMessage + entry.steamId;
+                LogRound(missingMessage);
+                continue;
+            }
+
+            // GG-04: never teleport/equip/freeze a corpse. The NEW character is routed into the
+            // round by the OnClientNewEvent respawn path (GG-01).
+            // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
+            if (!player.IsAlive())
+            {
+                string deadMessage = "begin skipped dead player ";
+                deadMessage = deadMessage + entry.steamId;
+                LogRound(deadMessage);
+                continue;
+            }
+
+            vector spawn = PickRandomSpawn();
+            // R2: Object.SetPosition(vector) in scripts/3_game/entities/object.c:300.
+            player.SetPosition(spawn);
+
+            WipeInventory(player);
+            EquipPlayer(player, entry.role);
+
+            if (entry.role == NexoDM_Role.PARTICIPANT)
+            {
+                // R2: Entity.DisableSimulation(bool) in scripts/3_game/entities/entity.c:3.
+                player.DisableSimulation(true);
+                // R2: Object.SetAllowDamage(bool) in scripts/3_game/entities/object.c:1192.
+                player.SetAllowDamage(false);
+            }
+
+            if (entry.role == NexoDM_Role.PARTICIPANT)
+            {
+                PlayerIdentity identity = player.GetIdentity();
+                if (identity)
+                    BroadcastCountdown(identity, 10);
+            }
+        }
+
+        float freezeSeconds = 10.0;
+        string callbackName = "EndFreeze";
+        // R2: Timer.Run(float,Managed,string,Param,bool) in scripts/3_game/tools/tools.c:595.
+        m_FreezeTimer.Run(freezeSeconds, this, callbackName, NULL, false);
+
+        // I2: start the round-duration countdown; OnRoundTimeout ends the round by tiebreak.
+        int roundDuration = m_Config.GetRoundDuration();
+        float roundSeconds = roundDuration;
+        string timeoutCallback = "OnRoundTimeout";
+        m_RoundTimer.Run(roundSeconds, this, timeoutCallback, NULL, false);
+#endif
+    }
+
+    void OnPlayerDamaged(PlayerBase victim, EntityAI source)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+
+        if (!victim)
+            return;
+
+        PlayerIdentity victimIdentity = victim.GetIdentity();
+        if (!victimIdentity)
+            return;
+
+        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+        string victimId = victimIdentity.GetPlainId();
+        if (victimId == string.Empty)
+            return;
+
+        NexoDM_PlayerEntry victimEntry = GetEntry(victimId);
+        if (!victimEntry)
+            return;
+
+        if (victimEntry.role != NexoDM_Role.PARTICIPANT)
+            return;
+
+        if (!victimEntry.damagedBy)
+            victimEntry.damagedBy = new set<string>();
+
+        string knifeAttackerId = string.Empty;
+        bool attackerIsParticipant = false;
+        PlayerBase attacker = ResolveSourcePlayer(source);
+        if (attacker)
+        {
+            PlayerIdentity attackerIdentity = attacker.GetIdentity();
+            if (attackerIdentity)
+            {
+                string attackerId = attackerIdentity.GetPlainId();
+                if (attackerId != string.Empty && attackerId != victimId)
+                {
+                    NexoDM_PlayerEntry attackerEntry = GetEntry(attackerId);
+                    if (attackerEntry && attackerEntry.role == NexoDM_Role.PARTICIPANT)
+                    {
+                        attackerIsParticipant = true;
+                        knifeAttackerId = attackerId;
+                        // R2: set.Find/Insert in scripts/1_core/proto/enscript.c:730/:739.
+                        if (victimEntry.damagedBy.Find(attackerId) < 0)
+                            victimEntry.damagedBy.Insert(attackerId);
+                    }
+                }
+            }
+        }
+
+        bool isKnife = false;
+        if (attackerIsParticipant && EnsureConfig())
+        {
+            // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:169.
+            string knife = m_Config.GetKnife();
+            // R2: Object.IsKindOf(string) in scripts/3_game/entities/object.c:517.
+            if (source && knife != string.Empty && source.IsKindOf(knife))
+                isKnife = true;
+        }
+
+        victimEntry.lastDamageWasKnife = isKnife;
+        if (isKnife)
+        {
+            // S5.5 KB1-B obs: marca de tiempo del ultimo cuchillazo (R2: DayZGame.GetTime() game.c:1510).
+            victimEntry.lastKnifeHitTimeMs = GetGame().GetTime();
+            // E2 kill-credit fallback: a scripted SetHealth(0) death yields EEKilled(killer=null),
+            // so remember the knife attacker to re-credit the kill in OnPlayerKilled.
+            victimEntry.lastKnifeKillerId = knifeAttackerId;
+        }
+
+        // Option A downed-kill credit: remember the last participant attacker (ANY weapon) + time, to
+        // re-credit the kill in OnPlayerKilled when the death reports no killer - an unconscious player
+        // choosing Respawn (OnClientRespawnEvent -> SetHealth(0), missionserver.c:608) or a bleed-out.
+        // Recency-gated there (ATTACKER_CREDIT_WINDOW_MS); a clean finisher sets a valid killer so the
+        // fallback never overrides them.
+        // R2: DayZGame.GetTime() in scripts/3_game/global/game.c:1510.
+        if (attackerIsParticipant && knifeAttackerId != string.Empty)
+        {
+            victimEntry.lastAttackerId = knifeAttackerId;
+            victimEntry.lastAttackerTimeMs = GetGame().GetTime();
+        }
+
+        // E2 [verify in-game]: one-hit knife. Force the victim's health to 0 so any knife hit is
+        // lethal when KnifeOneHit is set. SetHealth("","",0) reliably kills; the kill is re-credited
+        // to the attacker in OnPlayerKilled via lastKnifeKillerId when EEKilled gives killer=null.
+        // R2: EntityAI.SetHealth("","",0) in scripts/4_world/entities/explosivesbase/plastic_explosive.c:247.
+        if (isKnife && m_Config.GetKnifeOneHit())
+            victim.SetHealth("", "", 0);
+#endif
+    }
+
+    void OnPlayerKilled(PlayerBase victim, Object killer)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+
+        if (!victim)
+            return;
+
+        PlayerIdentity victimIdentity = victim.GetIdentity();
+        if (!victimIdentity)
+            return;
+
+        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+        string victimId = victimIdentity.GetPlainId();
+        if (victimId == string.Empty)
+            return;
+
+        NexoDM_PlayerEntry victimEntry = GetEntry(victimId);
+        if (!victimEntry)
+            return;
+
+        if (victimEntry.role != NexoDM_Role.PARTICIPANT)
+            return;
+
+        victimEntry.deaths = victimEntry.deaths + 1;
+        string deathDetail = "participant death recorded";
+        LogRule(NexoDM_Constants.RULE_DEATH_RECORDED, deathDetail);
+
+        PlayerBase killerPlayer = ResolveObjectPlayer(killer);
+        string killerId = string.Empty;
+        if (killerPlayer)
+        {
+            PlayerIdentity killerIdentity = killerPlayer.GetIdentity();
+            if (killerIdentity)
+                killerId = killerIdentity.GetPlainId();
+        }
+
+        // E2 fallback: a one-hit knife death (scripted SetHealth 0) reports EEKilled killer as
+        // null OR as the victim itself (self-attributed scripted death), so both cases recover
+        // the recorded knife attacker to credit the kill (kills counter).
+        if ((killerId == string.Empty || killerId == victimId) && victimEntry.lastDamageWasKnife && victimEntry.lastKnifeKillerId != string.Empty)
+        {
+            killerId = victimEntry.lastKnifeKillerId;
+            killerPlayer = FindPlayerBySteamId(killerId);
+        }
+
+        // Option A downed-kill credit: a no-killer death that was NOT a knife (or where the knife branch
+        // found nothing) - an unconscious player choosing Respawn (OnClientRespawnEvent SetHealth(0)) or a
+        // bleed-out after being downed by gunfire - credits the last participant attacker if recent. Only
+        // fires while the killer is still null/self, so a clean finisher (valid killer) is never overridden.
+        if ((killerId == string.Empty || killerId == victimId) && victimEntry.lastAttackerId != string.Empty)
+        {
+            // R2: DayZGame.GetTime() in scripts/3_game/global/game.c:1510.
+            int sinceLastHitMs = GetGame().GetTime() - victimEntry.lastAttackerTimeMs;
+            if (sinceLastHitMs >= 0 && sinceLastHitMs < NexoDM_Constants.ATTACKER_CREDIT_WINDOW_MS)
+            {
+                killerId = victimEntry.lastAttackerId;
+                killerPlayer = FindPlayerBySteamId(killerId);
+            }
+        }
+
+        if (killerPlayer && killerId != string.Empty && killerId != victimId)
+        {
+            NexoDM_PlayerEntry killerEntry = GetEntry(killerId);
+            if (killerEntry && killerEntry.role == NexoDM_Role.PARTICIPANT)
+            {
+                killerEntry.kills = killerEntry.kills + 1;
+                string killDetail = "participant kill recorded";
+                LogRule(NexoDM_Constants.RULE_KILL_RECORDED, killDetail);
+                AwardAssists(victimEntry, killerId);
+            }
+        }
+
+        // S5.5 KB1-A: consume-once - evita un credito stale entre kill y respawn (P2-2).
+        victimEntry.lastDamageWasKnife = false;
+        victimEntry.lastKnifeKillerId = string.Empty;
+        // Option A: consume the downed-credit attribution too, so it is not reused on a later death.
+        victimEntry.lastAttackerId = string.Empty;
+        victimEntry.lastAttackerTimeMs = 0;
+        // F-15: clear the assist set at death too (it ran AwardAssists above). The set was only
+        // cleared on respawn; a death not followed by a respawn-clear (round end / disconnect)
+        // would otherwise re-award stale assists on the entry's next death.
+        if (victimEntry.damagedBy)
+            victimEntry.damagedBy.Clear();
+
+        // Anti-loot: strip firearms/mags/ammo from the corpse now and
+        // sweep any dropped on the ground shortly after, so the round weapon can't be looted.
+        // Participants only. The knife (everyone has one), clothing and
+        // the body are kept - WipeWeaponsOnly preserves the knife via ShouldDeleteWeaponLoadoutItem.
+        vector deathPos = victim.GetPosition();
+        WipeWeaponsOnly(victim);
+        // R2: ScriptCallQueue.CallLater(func,int,bool,...) pattern in scripts/2_gamelib/tools.c:46.
+        GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathSite, 2000, false, deathPos);
+        // Final cleanup: delete the corpse and re-sweep stray weapons once physics has settled.
+        // Runs regardless of later round-state changes (arena hygiene, no lootable round weapons).
+        GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathFinal, 10000, false, victim, deathPos);
+#endif
+    }
+
+    // Death-site sweep: delete loose firearms/mags/ammo dropped on the ground near the death
+    // (the knife and non-weapon loot are kept). Called ~2s after a participant death so a
+    // weapon released from the hands has settled. The corpse's own weapons are already stripped
+    // by WipeWeaponsOnly at kill time. Radius 5 m: the dying character's momentum flings the
+    // hands weapon well past the old 2 m sphere (in-game test 2026-06-11: strays survived and
+    // were lootable). Only ownerless gun/mag/ammo match, so the wide sphere cannot hit gear
+    // carried by living players.
+    void CleanupDeathSite(vector pos)
+    {
+#ifdef SERVER
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        array<Object> objects = new array<Object>();
+        array<CargoBase> proxyCargos = new array<CargoBase>();
+        // R2: CGame.GetObjectsAtPosition3D(vector,float,out array<Object>,out array<CargoBase>) in scripts/5_mission/gui/inventorynew/vicinityitemmanager.c:245.
+        game.GetObjectsAtPosition3D(pos, 5.0, objects, proxyCargos);
+
+        int objIndex = 0;
+        for (objIndex = 0; objIndex < objects.Count(); objIndex = objIndex + 1)
+        {
+            ItemBase item = ItemBase.Cast(objects.Get(objIndex));
+            // Loose ground weapon only: no owning player, and a firearm/mag/ammo (not the knife).
+            // R2: EntityAI.GetHierarchyRootPlayer() in scripts/4_world/plugins/pluginbase/pluginrecipesmanager.c:407.
+            if (item && !item.GetHierarchyRootPlayer() && ShouldDeleteWeaponLoadoutItem(item))
+            {
+                // R2: CGame.ObjectDelete(Object) in scripts/3_game/global/game.c:704.
+                game.ObjectDelete(item);
+            }
+        }
+#endif
+    }
+
+    // Final death cleanup (+10s): deletes the corpse (clothes and knife go with it) and sweeps
+    // stray firearms/mags/ammo once more around the body's settled position - a ragdolled body
+    // and its flung weapon can end up far from where the kill registered. Intentionally has no
+    // round-state guard: a corpse from a round that just ended still gets removed.
+    void CleanupDeathFinal(PlayerBase corpse, vector deathPos)
+    {
+#ifdef SERVER
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        vector sweepPos = deathPos;
+        if (corpse)
+        {
+            // Never delete a living character (paranoia guard; the ref is captured at kill time).
+            // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
+            if (corpse.IsAlive())
+                return;
+
+            sweepPos = corpse.GetPosition();
+            // Recursive delete (attachments/cargo first, then the body) - same helper the
+            // weapon wipe uses, valid for any entity tree.
+            DeleteWeaponLoadoutEntityTree(corpse, game);
+        }
+
+        CleanupDeathSite(sweepPos);
+        // R2: vector.Distance(vector,vector) in scripts/1_core/proto/enconvert.c:196.
+        if (vector.Distance(sweepPos, deathPos) > 2.0)
+            CleanupDeathSite(deathPos);
+#endif
+    }
+
+    void AwardAssists(NexoDM_PlayerEntry victimEntry, string killerId)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (!victimEntry)
+            return;
+
+        if (!victimEntry.damagedBy)
+            return;
+
+        int index = 0;
+        for (index = 0; index < victimEntry.damagedBy.Count(); index = index + 1)
+        {
+            // R2: set.Count/Get in scripts/1_core/proto/enscript.c:724/:731.
+            string attackerId = victimEntry.damagedBy.Get(index);
+            if (attackerId == killerId)
+                continue;
+
+            NexoDM_PlayerEntry attackerEntry = GetEntry(attackerId);
+            if (attackerEntry && attackerEntry.role == NexoDM_Role.PARTICIPANT)
+            {
+                attackerEntry.assists = attackerEntry.assists + 1;
+                string assistDetail = "participant assist recorded";
+                LogRule(NexoDM_Constants.RULE_ASSIST_RECORDED, assistDetail);
+            }
+        }
+#endif
+    }
+
+    void OnPlayerRespawn(PlayerIdentity identity, PlayerBase player)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (!identity || !player)
+            return;
+
+        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+        string steamId = identity.GetPlainId();
+        if (steamId == string.Empty)
+            return;
+
+        NexoDM_PlayerEntry entry = GetEntry(steamId);
+        if (!entry)
+            return;
+
+        if (entry.role != NexoDM_Role.PARTICIPANT)
+            return;
+
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+
+        if (!EnsureConfig())
+            return;
+
+        // GG-01v5: a participant fresh character is born at the gungame spawn (pos override in
+        // MissionServer.OnClientNewEvent) and equipped DURING creation (StartingEquipSetup ->
+        // EquipParticipantAtBirth), so observers receive it already dressed. If that birth-equip ran,
+        // skip the post-creation teleport+wipe+equip here (that was the GG-01..v4 path that desynced)
+        // and only sync the HUD + reset death stats. Fallback (birth-equip did not run, e.g. a server
+        // with custom spawn gear that bypasses StartingEquipSetup): equip here the old way.
+        bool bornEquipped = false;
+        if (m_GG_BirthEquipped)
+        {
+            int beIdx = m_GG_BirthEquipped.Find(steamId);
+            if (beIdx >= 0)
+            {
+                m_GG_BirthEquipped.Remove(beIdx);
+                bornEquipped = true;
+            }
+        }
+
+        if (!bornEquipped)
+        {
+            vector spawn = PickRandomSpawn();
+            // R2: Object.SetPosition(vector) in scripts/3_game/entities/object.c:300.
+            player.SetPosition(spawn);
+            WipeInventory(player);
+            EquipPlayer(player, entry.role);
+        }
+
+        if (!entry.damagedBy)
+            entry.damagedBy = new set<string>();
+
+        // R2: set.Clear in scripts/1_core/proto/enscript.c:725.
+        entry.damagedBy.Clear();
+        entry.lastDamageWasKnife = false;
+        entry.lastKnifeKillerId = string.Empty;
+        entry.lastAttackerId = string.Empty;
+        entry.lastAttackerTimeMs = 0;
+
+        string respawnDetail = "participant respawn equipped";
+        LogRule(NexoDM_Constants.RULE_RESPAWN_EQUIPPED, respawnDetail);
+#endif
+    }
+
+    // Makes the freshly-spawned weapon ready: chamber (or fully load an EMPTY internal magazine for
+    // shotguns/Mosin) + hotbar bind, DEFERRED one tick (GG_ReadyWeapon). Doing it synchronously right
+    // after SpawnPreset is unsafe twice over: (1) on a participant birth-equip MakeWeaponReady runs
+    // inside MissionServer.StartingEquipSetup (character creation), where a sync quickbar write broke
+    // the gungame birth-spawn; (2) on a LIVE kill the just-swapped weapon's FSM is transient and the
+    // chamber sometimes did not take ("some weapons unchambered" on knife kills). Re-fetching next tick
+    // gives a stable weapon. (Full-auto force removed: raw SetMuzzleMode on both sides bypassed the FSM
+    // sync path and desynced multi-mode weapons.) Server-only.
+    protected void MakeWeaponReady(PlayerBase player)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+
+        // R2: ScriptCallQueue.CallLater(func,int,bool,...) in scripts/2_gamelib/tools.c:61.
+        GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(GG_ReadyWeapon, 0, false, player);
+#endif
+    }
+
+    // Deferred target of MakeWeaponReady (next tick = stable FSM): chamber the in-hands weapon (or
+    // fully load an EMPTY internal magazine + chamber with one consistent ammo type) and bind it to
+    // hotbar slot 1. Server-only.
+    void GG_ReadyWeapon(PlayerBase player)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+
+        // m3: the player may have died/disconnected between the spawn and this next-tick callback.
+        // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
+        if (!player.IsAlive())
+            return;
+
+        // The weapon usually spawns in hands, but LBmaster may have placed it in the inventory.
+        // Fall back to scanning
+        // the player for the (single, post-wipe) Weapon_Base so it is chambered + hotbar-bound wherever
+        // it landed. R2: Man.GetEntityInHands() in scripts/3_game/entities/man.c:81.
+        Weapon_Base wpn = Weapon_Base.Cast(player.GetEntityInHands());
+        if (!wpn)
+            wpn = FindPlayerWeapon(player);
+        if (!wpn)
+            return;
+
+        int muzzle = wpn.GetCurrentMuzzle();
+        // R2: Weapon.HasInternalMagazine/GetInternalMagazineCartridgeCount in
+        // scripts/4_world/entities/core/inherited/weapon.c:106/111. Only fill an EMPTY internal mag:
+        // FillInnerMagazine pushes max cartridges and would overfill a partially-loaded one.
+        if (wpn.HasInternalMagazine(muzzle) && wpn.GetInternalMagazineCartridgeCount(muzzle) == 0)
+        {
+            // Pick a LETHAL chamberable ammo. FillInnerMagazine("") picks a RANDOM entry from the weapon's
+            // chamberableFrom, and a shotgun's pool includes Ammo_12gaRubberSlug (non-lethal) - players
+            // could not kill with it. GG_PickLethalChamberAmmo returns the first non-rubber entry, or ""
+            // (let the engine randomize) for weapons whose pool has no rubber.
+            string lethalAmmo = GG_PickLethalChamberAmmo(wpn);
+            // R2: Weapon_Base.FillInnerMagazine(string,int) in weapon_base.c:839 — the given (lethal) ammo
+            // fills the inner mag AND the chamber (WeaponWithAmmoFlags.CHAMBER, weapon_base.c:16).
+            wpn.FillInnerMagazine(lethalAmmo, WeaponWithAmmoFlags.CHAMBER);
+        }
+        else
+        {
+            // R2: Weapon_Base.FillChamber() in weapon_base.c:929. Idempotent (FillSpecificChamber :988).
+            // Detachable-mag weapons keep the magazine the LBmaster preset attached; just chamber.
+            wpn.FillChamber();
+        }
+
+        // R2: Weapon.Synchronize() in scripts/4_world/entities/core/inherited/weapon.c:11.
+        wpn.Synchronize();
+
+        // R2: PlayerBase.SetQuickBarEntityShortcut(EntityAI,int,bool) in scripts/4_world/entities/manbase/playerbase.c:2232.
+        player.SetQuickBarEntityShortcut(wpn, 0, true);
+#endif
+    }
+
+    // Picks a LETHAL chamberable ammo class for the weapon, avoiding non-lethal rounds. The engine's
+    // random pick (FillInnerMagazine/FillChamber with "") draws from the weapon's chamberableFrom, and a
+    // shotgun's pool includes Ammo_12gaRubberSlug (non-lethal). Returns the first chamberableFrom entry
+    // whose class name does not contain "Rubber", or "" (let the engine randomize) when the config is
+    // empty or every entry is filtered out. Server-only.
+    protected string GG_PickLethalChamberAmmo(Weapon_Base wpn)
+    {
+#ifdef SERVER
+        if (!wpn)
+            return "";
+
+        // R2: CGame.ConfigGetTextArray(string,out TStringArray) in scripts/3_game/global/game.c:557;
+        // chamberableFrom holds the weapon's compatible cartridge classes (dayzgame.c:3794).
+        TStringArray chamberable = new TStringArray();
+        string cfgPath = "CfgWeapons " + wpn.GetType() + " chamberableFrom";
+        GetGame().ConfigGetTextArray(cfgPath, chamberable);
+
+        int i = 0;
+        for (i = 0; i < chamberable.Count(); i = i + 1)
+        {
+            string ammoName = chamberable.Get(i);
+            // R2: string.Contains(string) in scripts/1_core/proto/enstring.c:286.
+            if (ammoName != string.Empty && !ammoName.Contains("Rubber"))
+                return ammoName;
+        }
+#endif
+        return "";
+    }
+
+    // Returns the first Weapon_Base carried by the player (hands, attachments or cargo). After
+    // WipeWeaponsOnly the only firearm on a participant is the freshly spawned weapon, so this
+    // reliably locates it even when LBmaster placed it in the inventory instead of the hands
+    // (knife-kill: the knife occupied the hands). Server-only.
+    protected Weapon_Base FindPlayerWeapon(PlayerBase player)
+    {
+#ifdef SERVER
+        if (!player)
+            return null;
+
+        // R2: EntityAI.GetInventory() in scripts/3_game/entities/entityai.c:1834.
+        GameInventory inv = player.GetInventory();
+        if (!inv)
+            return null;
+
+        array<EntityAI> items = new array<EntityAI>();
+        // R2: GameInventory.EnumerateInventory(InventoryTraversalType,out array<EntityAI>) in scripts/3_game/systems/inventory/inventory.c:127; InventoryTraversalType.PREORDER in scripts/3_game/gameplay.c:7.
+        inv.EnumerateInventory(InventoryTraversalType.PREORDER, items);
+        int i = 0;
+        for (i = 0; i < items.Count(); i = i + 1)
+        {
+            Weapon_Base w = Weapon_Base.Cast(items.Get(i));
+            if (w)
+                return w;
+        }
+#endif
+        return null;
+    }
+
+    void OnPlayerReady(PlayerIdentity identity, PlayerBase player)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (!identity || !player)
+            return;
+
+        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+        string steamId = identity.GetPlainId();
+        if (steamId == string.Empty)
+            return;
+
+        if (m_State == NexoDM_State.IDLE || m_State == NexoDM_State.ENDED)
+            return;
+
+        if (m_State == NexoDM_State.ACTIVE)
+        {
+            NexoDM_PlayerEntry activeEntry = GetEntry(steamId);
+            if (!activeEntry)
+            {
+                activeEntry = GetOrCreateEntry(steamId);
+                activeEntry.role = NexoDM_Role.PARTICIPANT;
+                if (player.IsAlive() && EnsureConfig())
+                {
+                    vector spawn = PickRandomSpawn();
+                    player.SetPosition(spawn);
+                    WipeInventory(player);
+                    EquipPlayer(player, activeEntry.role);
+                }
+            }
+
+            ApplyRoleToPlayer(player, activeEntry.role);
+        }
+#endif
+    }
+
+    void OnPlayerReconnect(PlayerIdentity identity, PlayerBase player)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (!identity || !player)
+            return;
+
+        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+        string steamId = identity.GetPlainId();
+        if (steamId == string.Empty)
+            return;
+
+        NexoDM_PlayerEntry entry = GetEntry(steamId);
+        if (entry)
+        {
+            ApplyRoleToPlayer(player, entry.role);
+            if (entry.role == NexoDM_Role.PARTICIPANT && m_State == NexoDM_State.ACTIVE)
+            {
+                // F-07: re-equip so the reconnected participant's inventory matches the round loadout.
+                if (EnsureConfig())
+                {
+                    WipeInventory(player);
+                    EquipPlayer(player, entry.role);
+                }
+            }
+            return;
+        }
+
+        if (m_State == NexoDM_State.ACTIVE)
+        {
+            entry = GetOrCreateEntry(steamId);
+            entry.role = NexoDM_Role.PARTICIPANT;
+            if (player.IsAlive() && EnsureConfig())
+            {
+                vector spawn = PickRandomSpawn();
+                player.SetPosition(spawn);
+                WipeInventory(player);
+                EquipPlayer(player, entry.role);
+            }
+            ApplyRoleToPlayer(player, entry.role);
+            return;
+        }
+
+        // F1 (was m_PendingPublicCleanup, GG-07/F-22): a participant who logged out during a round and
+        // reconnects after it ended gets the same PlayerBase back with its synced role still PARTICIPANT;
+        // reset it so the client does not keep the scoreboard open and polling while IDLE.
+        ApplyRoleToPlayer(player, NexoDM_Role.NONE);
+#endif
+    }
+
+    protected void AnnounceWinner(string reason, string winnerSteamId)
+    {
+#ifdef SERVER
+        string adminStop = "admin_stop";
+        if (reason == adminStop)
+            return;
+
+        string winnerName = GetPlayerName(winnerSteamId);
+        string message;
+        if (winnerName == string.Empty)
+        {
+            message = NexoDM_Constants.MSG_NO_WINNER;
+        }
+        else
+        {
+            message = NexoDM_Constants.MSG_WINNER_PREFIX;
+            message = message + winnerName;
+        }
+
+        // 3_Game bus -> 5_Mission listener -> LBChatHandler.SendSimpleChatMessage (broadcast).
+        NexoDM_AnnounceBus.Raise(null, message, true);
+#endif
+    }
+
+    // G3-G5: answer a client's SCOREBOARD_REQ with the participant table (server-authoritative).
+    // Serialized as count + per-row [name, kills, assists, deaths]; the client
+    // reads the same order in NexoDM_PlayerBase.NexoDM_HandleScoreboardDataRPC.
+    void OnScoreboardRequest(PlayerIdentity sender)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (!sender)
+            return;
+
+        // R2: PlayerIdentity.GetPlayer() in scripts/3_game/gameplay.c:374-375.
+        PlayerBase target = PlayerBase.Cast(sender.GetPlayer());
+        if (!target)
+        {
+            // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+            string steamId = sender.GetPlainId();
+            target = FindPlayerBySteamId(steamId);
+        }
+
+        if (!target)
+            return;
+
+        EnsureCollections();
+
+        // G5/access gate: only serve the participant table during an active round, and only to a
+        // participant (blocks the empty-board-refresh-forever when idle).
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+
+        NexoDM_PlayerEntry senderEntry = GetEntry(sender.GetPlainId());
+        if (!senderEntry || senderEntry.role != NexoDM_Role.PARTICIPANT)
+            return;
+
+        // Collect participants then rank them by the tiebreak (kills>assists>deaths) so the
+        // scoreboard Rank column is meaningful. Selection sort, best first (count <= MaxPlayers).
+        array<NexoDM_PlayerEntry> ranked = new array<NexoDM_PlayerEntry>;
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry counted = m_PlayerEntries.GetElement(index);
+            // F-01: only rank participants whose player is connected (no ghost rows).
+            if (counted && counted.role == NexoDM_Role.PARTICIPANT && IsEntryOnline(counted))
+                ranked.Insert(counted);
+        }
+
+        int a = 0;
+        int b = 0;
+        for (a = 0; a < ranked.Count(); a = a + 1)
+        {
+            int best = a;
+            for (b = a + 1; b < ranked.Count(); b = b + 1)
+            {
+                if (IsBetterByTiebreak(ranked.Get(b), ranked.Get(best)))
+                    best = b;
+            }
+            if (best != a)
+            {
+                NexoDM_PlayerEntry swap = ranked.Get(a);
+                ranked.Set(a, ranked.Get(best));
+                ranked.Set(best, swap);
+            }
+        }
+
+        ScriptRPC rpc = new ScriptRPC();
+        int count = ranked.Count();
+        // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57 (raw primitives/strings).
+        rpc.Write(count);
+
+        for (a = 0; a < count; a = a + 1)
+        {
+            NexoDM_PlayerEntry entry = ranked.Get(a);
+            string name = GetPlayerName(entry.steamId);
+            int rKills = entry.kills;
+            int rAssists = entry.assists;
+            int rDeaths = entry.deaths;
+
+            rpc.Write(name);
+            rpc.Write(rKills);
+            rpc.Write(rAssists);
+            rpc.Write(rDeaths);
+        }
+
+        // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
+        rpc.Send(target, NexoDM_RPC.SCOREBOARD_DATA, true, sender);
+#endif
+    }
+
+    protected vector PickRandomSpawn()
+    {
+        array<vector> spawnList;
+        float radius = 0.0;
+
+        // R2: NexoDM_Config.GetRespawnCoords() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:218.
+        spawnList = m_Config.GetRespawnCoords();
+        // R2: NexoDM_Config.GetRespawnRadius() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:202.
+        radius = m_Config.GetRespawnRadius();
+
+        DayZGame game = GetGame();
+        if (!game)
+        {
+            // R2: Vector(float,float,float) in scripts/1_core/proto/enmath3d.c:18.
+            return Vector(0, 0, 0);
+        }
+
+        if (!spawnList || spawnList.Count() == 0)
+        {
+            // R2: CGame.SurfaceY(float,float) in scripts/3_game/global/game.c:1162.
+            float originY = game.SurfaceY(0, 0);
+            // R2: Vector(float,float,float) in scripts/1_core/proto/enmath3d.c:18.
+            return Vector(0, originY, 0);
+        }
+
+        // F-20v2: uniform-random coord pick. Was a round-robin index (reset to 0 each round) that
+        // clustered players on the first coords of the list — physically close on the map. Reuse
+        // m_SpawnRoundRobinIdx as "last coord used" to avoid two back-to-back spawns on the same coord.
+        // R2: Math.RandomInt(min,max) is max-exclusive (enforce-script-reference Math section).
+        int count = spawnList.Count();
+        int idx = Math.RandomInt(0, count);
+        if (count > 1 && idx == m_SpawnRoundRobinIdx)
+            idx = (idx + 1) % count;
+        m_SpawnRoundRobinIdx = idx;
+
+        vector base = spawnList.Get(idx);
+        float minRadius = 0.0 - radius;
+        // R2: Math.RandomFloat(float,float) in scripts/1_core/proto/enmath.c:91.
+        float dx = Math.RandomFloat(minRadius, radius);
+        float dz = Math.RandomFloat(minRadius, radius);
+        float x = base[0] + dx;
+        float z = base[2] + dz;
+        // C1 exact spawn: use the CONFIGURED Y of the coord (base[1]), NOT the terrain.
+        // game.SurfaceY would snap to ground and drop players under structures / the map.
+        float y = base[1];
+        // R2: Vector(float,float,float) in scripts/1_core/proto/enmath3d.c:18.
+        return Vector(x, y, z);
+    }
+
+    protected void WipeInventory(PlayerBase player)
+    {
+        if (!player)
+            return;
+
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        // HM prior art: hands to attachments to cargo wipe in _recovered/HM_Core_Module/Scripts/HM_Battle_Royale/MissionServer.c:1158-1193.
+        // R2: Man.GetHumanInventory() in scripts/3_game/entities/man.c:79.
+        HumanInventory humanInventory = player.GetHumanInventory();
+        if (humanInventory)
+        {
+            // R2: HumanInventory.GetEntityInHands() in scripts/3_game/systems/inventory/humaninventory.c:16.
+            EntityAI handItem = humanInventory.GetEntityInHands();
+            if (handItem)
+            {
+                // R2: CGame.ObjectDelete(Object) in scripts/3_game/global/game.c:704.
+                game.ObjectDelete(handItem);
+            }
+        }
+
+        // R2: EntityAI.GetInventory() in scripts/3_game/entities/entityai.c:1834.
+        GameInventory inventory = player.GetInventory();
+        if (!inventory)
+            return;
+
+        // R2: GameInventory.AttachmentCount() in scripts/3_game/systems/inventory/inventory.c:205.
+        int attachmentCount = inventory.AttachmentCount();
+        int attachmentIndex = 0;
+        for (attachmentIndex = attachmentCount - 1; attachmentIndex >= 0; attachmentIndex = attachmentIndex - 1)
+        {
+            // R2: GameInventory.GetAttachmentFromIndex(int) in scripts/3_game/systems/inventory/inventory.c:220.
+            EntityAI attachment = inventory.GetAttachmentFromIndex(attachmentIndex);
+            if (attachment)
+            {
+                WipeEntityCargo(attachment);
+                // R2: CGame.ObjectDelete(Object) in scripts/3_game/global/game.c:704.
+                game.ObjectDelete(attachment);
+            }
+        }
+
+        WipeEntityCargo(player);
+    }
+
+    void WipeWeaponsOnly(PlayerBase player)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (!player)
+            return;
+
+        if (!m_Config)
+            return;
+
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        // R2: Man.GetHumanInventory() in scripts/3_game/entities/man.c:79.
+        HumanInventory humanInventory = player.GetHumanInventory();
+        if (humanInventory)
+        {
+            // R2: HumanInventory.GetEntityInHands() in scripts/3_game/systems/inventory/humaninventory.c:16.
+            EntityAI handItem = humanInventory.GetEntityInHands();
+            if (ShouldDeleteWeaponLoadoutItem(handItem))
+            {
+                DeleteWeaponLoadoutEntityTree(handItem, game);
+            }
+            else
+            {
+                WipeWeaponLoadoutChildren(handItem, game);
+            }
+        }
+
+        WipeWeaponLoadoutChildren(player, game);
+#endif
+    }
+
+    protected void WipeEntityCargo(EntityAI container)
+    {
+        if (!container)
+            return;
+
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        // R2: EntityAI.GetInventory() in scripts/3_game/entities/entityai.c:1834.
+        GameInventory inventory = container.GetInventory();
+        if (!inventory)
+            return;
+
+        // R2: GameInventory.GetCargo() in scripts/3_game/systems/inventory/inventory.c:138.
+        CargoBase cargo = inventory.GetCargo();
+        if (!cargo)
+            return;
+
+        // R2: CargoBase.GetItemCount() in scripts/3_game/systems/inventory/cargo.c:28.
+        int cargoCount = cargo.GetItemCount();
+        int cargoIndex = 0;
+        for (cargoIndex = cargoCount - 1; cargoIndex >= 0; cargoIndex = cargoIndex - 1)
+        {
+            // R2: CargoBase.GetItem(int) in scripts/3_game/systems/inventory/cargo.c:32.
+            EntityAI cargoItem = cargo.GetItem(cargoIndex);
+            if (cargoItem)
+            {
+                // R2: CGame.ObjectDelete(Object) in scripts/3_game/global/game.c:704.
+                game.ObjectDelete(cargoItem);
+            }
+        }
+    }
+
+    protected void WipeWeaponLoadoutChildren(EntityAI container, DayZGame game)
+    {
+        if (!container)
+            return;
+
+        if (!game)
+            return;
+
+        // R2: EntityAI.GetInventory() in scripts/3_game/entities/entityai.c:1834.
+        GameInventory inventory = container.GetInventory();
+        if (!inventory)
+            return;
+
+        // R2: GameInventory.AttachmentCount() in scripts/3_game/systems/inventory/inventory.c:205.
+        int attachmentCount = inventory.AttachmentCount();
+        int attachmentIndex = 0;
+        for (attachmentIndex = attachmentCount - 1; attachmentIndex >= 0; attachmentIndex = attachmentIndex - 1)
+        {
+            // R2: GameInventory.GetAttachmentFromIndex(int) in scripts/3_game/systems/inventory/inventory.c:220.
+            EntityAI attachment = inventory.GetAttachmentFromIndex(attachmentIndex);
+            if (!attachment)
+                continue;
+
+            if (ShouldDeleteWeaponLoadoutItem(attachment))
+            {
+                DeleteWeaponLoadoutEntityTree(attachment, game);
+            }
+            else
+            {
+                WipeWeaponLoadoutChildren(attachment, game);
+            }
+        }
+
+        // R2: GameInventory.GetCargo() in scripts/3_game/systems/inventory/inventory.c:138.
+        CargoBase cargo = inventory.GetCargo();
+        if (!cargo)
+            return;
+
+        // R2: CargoBase.GetItemCount() in scripts/3_game/systems/inventory/cargo.c:28.
+        int cargoCount = cargo.GetItemCount();
+        int cargoIndex = 0;
+        for (cargoIndex = cargoCount - 1; cargoIndex >= 0; cargoIndex = cargoIndex - 1)
+        {
+            // R2: CargoBase.GetItem(int) in scripts/3_game/systems/inventory/cargo.c:32.
+            EntityAI cargoItem = cargo.GetItem(cargoIndex);
+            if (!cargoItem)
+                continue;
+
+            if (ShouldDeleteWeaponLoadoutItem(cargoItem))
+            {
+                DeleteWeaponLoadoutEntityTree(cargoItem, game);
+            }
+            else
+            {
+                WipeWeaponLoadoutChildren(cargoItem, game);
+            }
+        }
+    }
+
+    protected void DeleteWeaponLoadoutEntityTree(EntityAI item, DayZGame game)
+    {
+        if (!item)
+            return;
+
+        if (!game)
+            return;
+
+        // ObjectDelete is native and does not document script-visible cascade for inventory children,
+        // so S4 deletes weapon children explicitly before deleting the parent.
+        // R2: EntityAI.GetInventory() in scripts/3_game/entities/entityai.c:1834.
+        GameInventory inventory = item.GetInventory();
+        if (inventory)
+        {
+            // R2: GameInventory.AttachmentCount() in scripts/3_game/systems/inventory/inventory.c:205.
+            int attachmentCount = inventory.AttachmentCount();
+            int attachmentIndex = 0;
+            for (attachmentIndex = attachmentCount - 1; attachmentIndex >= 0; attachmentIndex = attachmentIndex - 1)
+            {
+                // R2: GameInventory.GetAttachmentFromIndex(int) in scripts/3_game/systems/inventory/inventory.c:220.
+                EntityAI attachment = inventory.GetAttachmentFromIndex(attachmentIndex);
+                DeleteWeaponLoadoutEntityTree(attachment, game);
+            }
+
+            // R2: GameInventory.GetCargo() in scripts/3_game/systems/inventory/inventory.c:138.
+            CargoBase cargo = inventory.GetCargo();
+            if (cargo)
+            {
+                // R2: CargoBase.GetItemCount() in scripts/3_game/systems/inventory/cargo.c:28.
+                int cargoCount = cargo.GetItemCount();
+                int cargoIndex = 0;
+                for (cargoIndex = cargoCount - 1; cargoIndex >= 0; cargoIndex = cargoIndex - 1)
+                {
+                    // R2: CargoBase.GetItem(int) in scripts/3_game/systems/inventory/cargo.c:32.
+                    EntityAI cargoItem = cargo.GetItem(cargoIndex);
+                    DeleteWeaponLoadoutEntityTree(cargoItem, game);
+                }
+            }
+        }
+
+        // R2: CGame.ObjectDelete(Object) in scripts/3_game/global/game.c:704.
+        game.ObjectDelete(item);
+    }
+
+    protected bool ShouldDeleteWeaponLoadoutItem(EntityAI item)
+    {
+        if (!item)
+            return false;
+
+        if (m_Config)
+        {
+            // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:169.
+            string knife = m_Config.GetKnife();
+            // R2: Object.IsKindOf(string) in scripts/3_game/entities/object.c:517.
+            if (knife != string.Empty && item.IsKindOf(knife))
+                return false;
+        }
+
+        string weaponBase = "Weapon_Base";
+        // R2: Weapon_Base bound to config class in scripts/4_world/entities/firearms/weapon_base.c:36-38.
+        if (item.IsKindOf(weaponBase))
+            return true;
+
+        string magazineBase = "Magazine_Base";
+        // R2: Magazine_Base typedef in scripts/4_world/entities/itembase/magazine/magazine.c:1.
+        if (item.IsKindOf(magazineBase))
+            return true;
+
+        string ammunitionBase = "Ammunition_Base";
+        // R2: Ammunition_Base extends Magazine_Base in scripts/4_world/entities/itembase/magazine/ammunitionpiles.c:2.
+        if (item.IsKindOf(ammunitionBase))
+            return true;
+
+        return false;
+    }
+
+    protected void EquipPlayer(PlayerBase player, int role)
+    {
+        if (!player)
+            return;
+
+        if (!m_Config)
+            return;
+
+        // R2: NexoDM_Config.GetClothingPreset() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:158.
+        string clothing = m_Config.GetClothingPreset();
+        if (clothing != string.Empty)
+        {
+            if (!LB_PresetLoader.Get)
+            {
+                LogRule("PRESET_LOADER_UNAVAILABLE_CLOTHING", clothing);
+            }
+            else
+            {
+                // R2: LB_PresetLoader.GetPreset(string) in LBmaster_Core/scripts/4_World/LBmaster_Core/Config/LB_PresetLoader.c:146.
+                LB_PresetBase clothingPreset = LB_PresetLoader.Get.GetPreset(clothing);
+                if (clothingPreset)
+                {
+                    // R2: LB_PresetBase.SpawnPreset(PlayerBase,EntityAI) in LBmaster_Core/scripts/4_World/LBmaster_Core/Struct/LB_PresetBase.c:138.
+                    clothingPreset.SpawnPreset(player, player);
+                }
+                else
+                {
+                    LogRule("PRESET_RESOLVE_FAILED_CLOTHING", clothing);
+                }
+            }
+        }
+
+        if (role != NexoDM_Role.PARTICIPANT)
+            return;
+
+        // F3: Loadouts aleatorios
+        // R2: NexoDM_Config.GetGunPresets() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:163.
+        array<string> guns = m_Config.GetGunPresets();
+        if (guns && guns.Count() > 0)
+        {
+            string gunName = guns.Get(0);
+            if (!LB_PresetLoader.Get)
+            {
+                LogRule("PRESET_LOADER_UNAVAILABLE_GUN", gunName);
+            }
+            else
+            {
+                LB_PresetBase gunPreset = LB_PresetLoader.Get.GetPreset(gunName);
+                if (gunPreset)
+                {
+                    gunPreset.SpawnPreset(player, player);
+                    // Chamber + load the freshly spawned weapon and bind it to the hotbar.
+                    MakeWeaponReady(player);
+                }
+                else
+                    LogRule("PRESET_RESOLVE_FAILED_GUN", gunName);
+            }
+        }
+
+        // Knife (hotbar slot 2) + bandage (hotbar slot 3) are inventory items - NOT visible to other
+        // clients - so both their CREATION and their bind are DEFERRED off this frame (3a). On a
+        // participant birth EquipPlayer runs inside character creation; spawning them synchronously
+        // there added to the server-frame stall every respawn (all clients hitched ~1s). Only the
+        // visible loadout (clothing + weapon-in-hands) stays synchronous for the GG-01v5/v6 appearance.
+        // R2: ScriptCallQueue.CallLater(func,int,bool,...) in scripts/2_gamelib/tools.c:61.
+        GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(GG_GiveKnifeAndBandage, 0, false, player);
+    }
+
+    // Deferred (next tick) creation + hotbar bind of the knife (slot 2) and bandage (slot 3). These are
+    // inventory items, invisible to other clients, so deferring their CREATION off the character-creation
+    // frame is desync-safe and trims the birth-frame server stall (3a). Bind is inline here: by next tick
+    // the FSM is stable and the character is released, so the sync-quickbar-during-birth hazard that
+    // originally forced the bind to be deferred does not apply. Server-only.
+    void GG_GiveKnifeAndBandage(PlayerBase player)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+
+        // m3: skip a player who died/disconnected in the one-tick gap since the equip.
+        // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
+        if (!player.IsAlive())
+            return;
+
+        if (!m_Config)
+            return;
+
+        // R2: EntityAI.GetInventory() in scripts/3_game/entities/entityai.c:1834.
+        GameInventory inventory = player.GetInventory();
+        if (!inventory)
+            return;
+
+        // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:169.
+        string knife = m_Config.GetKnife();
+        if (knife != string.Empty)
+        {
+            // R2: GameInventory.CreateInInventory(string) in scripts/3_game/systems/inventory/inventory.c:876.
+            EntityAI knifeItem = inventory.CreateInInventory(knife);
+            // R2: PlayerBase.SetQuickBarEntityShortcut(EntityAI,int,bool) in scripts/4_world/entities/manbase/playerbase.c:2232.
+            if (knifeItem)
+                player.SetQuickBarEntityShortcut(knifeItem, 1, true);
+        }
+
+        // Bandage on hotbar slot 3 (index 2). Independent of the Knife config (m1). Scope recorded in
+        // product-spec Changelog 2026-06-14 (C3/F2 amended). [verify in-game] not double with a bandage
+        // already in the ClothingPreset.
+        // R2: GameInventory.CreateInInventory(string) in scripts/3_game/systems/inventory/inventory.c:876.
+        EntityAI bandageItem = inventory.CreateInInventory("BandageDressing");
+        if (bandageItem)
+            player.SetQuickBarEntityShortcut(bandageItem, 2, true);
+#endif
+    }
+
+    // GG-01v5 birth-equip resolution: decide whether a fresh character about to be created belongs to a
+    // participant in an ACTIVE round, and if so return the gungame spawn so MissionServer can
+    // create the character AT that spawn (no double-load lag) and equip it during creation. Only mutation:
+    // enrolling a player with no entry as participant (F1); PickRandomSpawn's random pick is consumed once by the caller (OnPlayerRespawn
+    // skips its own PickRandomSpawn for this player via the bornEquipped guard).
+    bool ResolveParticipantBirthSpawn(string steamId, out vector spawn)
+    {
+        spawn = vector.Zero;
+#ifdef SERVER
+        if (!CanMutateState())
+            return false;
+
+        if (steamId == string.Empty)
+            return false;
+
+        if (m_State != NexoDM_State.ACTIVE)
+            return false;
+
+        // F1: with no public role, a player joining an ACTIVE round is a participant from birth, so
+        // enroll them here and they are born at the arena already equipped (GG-01v5), instead of being
+        // born at a vanilla spawn and teleported + re-equipped on the next tick by OnPlayerReady.
+        NexoDM_PlayerEntry entry = GetEntry(steamId);
+        if (!entry)
+        {
+            entry = GetOrCreateEntry(steamId);
+            entry.role = NexoDM_Role.PARTICIPANT;
+        }
+
+        if (entry.role != NexoDM_Role.PARTICIPANT)
+            return false;
+
+        if (!EnsureConfig())
+            return false;
+
+        spawn = PickRandomSpawn();
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    // GG-01v5: equip a participant DURING character creation (called from MissionServer.StartingEquipSetup,
+    // before the engine releases the character to the network), so observers receive it already dressed.
+    // Wipes the vanilla default loadout EquipCharacter just applied, then equips the gun preset. Marks
+    // the steamId so the post-birth OnPlayerRespawn skips the (desyncing) teleport+wipe+equip path.
+    void EquipParticipantAtBirth(PlayerBase player, string steamId)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+
+        WipeInventory(player);
+        EquipPlayer(player, NexoDM_Role.PARTICIPANT);
+
+        if (!m_GG_BirthEquipped)
+            m_GG_BirthEquipped = new set<string>();
+        if (steamId != string.Empty && m_GG_BirthEquipped.Find(steamId) < 0)
+            m_GG_BirthEquipped.Insert(steamId);
+#endif
+    }
+
+    protected void BroadcastCountdown(PlayerIdentity recipient, int seconds)
+    {
+#ifdef SERVER
+        if (!recipient)
+            return;
+
+        if (seconds <= 0)
+            return;
+
+        // R2: PlayerIdentity.GetPlayer() in scripts/3_game/gameplay.c:374-375.
+        PlayerBase targetPlayer = PlayerBase.Cast(recipient.GetPlayer());
+        if (!targetPlayer)
+        {
+            // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+            string steamId = recipient.GetPlainId();
+            targetPlayer = FindPlayerBySteamId(steamId);
+        }
+
+        if (!targetPlayer)
+        {
+            LogRule("COUNTDOWN_NO_TARGET", "target player not found");
+            return;
+        }
+
+        ScriptRPC rpc = new ScriptRPC();
+        Param1<int> payload = new Param1<int>(seconds);
+        // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57.
+        rpc.Write(payload);
+        // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
+        rpc.Send(targetPlayer, NexoDM_RPC.COUNTDOWN, true, recipient);
+#endif
+    }
+
+    void EndFreeze()
+    {
+#ifdef SERVER
+        SetFreezeForEntries(false);
+        string message = "round freeze ended; entering live combat";
+        LogRound(message);
+#endif
+    }
+
+    protected void SetFreezeForEntries(bool frozen)
+    {
+#ifdef SERVER
+        EnsureCollections();
+
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry)
+                continue;
+
+            // Only participants are ever frozen (BeginRound gates the freeze on PARTICIPANT).
+            if (entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+
+            PlayerBase player = FindPlayerBySteamId(entry.steamId);
+            if (!player)
+                continue;
+
+            // R2: Entity.DisableSimulation(bool) in scripts/3_game/entities/entity.c:3.
+            player.DisableSimulation(frozen);
+
+            if (frozen)
+            {
+                // R2: Object.SetAllowDamage(bool) in scripts/3_game/entities/object.c:1192.
+                player.SetAllowDamage(false);
+            }
+            else
+            {
+                // R2: Object.SetAllowDamage(bool) in scripts/3_game/entities/object.c:1192.
+                player.SetAllowDamage(true);
+            }
+        }
+#endif
+    }
+
+    protected void ScheduleIdleReset()
+    {
+#ifdef SERVER
+        EnsureTimers();
+        StopTimer(m_EndStateTimer);
+        float resetSeconds = 0.1;
+        string callbackName = "ReturnToIdle";
+        // R2: Timer.Run(float,Managed,string,Param,bool) in scripts/3_game/tools/tools.c:595.
+        m_EndStateTimer.Run(resetSeconds, this, callbackName);
+#endif
+    }
+
+    void ReturnToIdle()
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (m_State == NexoDM_State.ENDED)
+        {
+            // BUG-001 (vault bug-ledger): stats survive ENDED so S7 can compute winner/scoreboard before IDLE clears.
+            ResetStats();
+            m_State = NexoDM_State.IDLE;
+            string idleMessage = "round returned to idle";
+            LogRound(idleMessage);
+
+            // Unsupervised 24/7 loop: every transition back to idle re-arms the next round.
+            ScheduleAutostartIfEnabled("round ended");
+        }
+#endif
+    }
+
+    // Unsupervised 24/7 mode (config Autostart + AutostartDelaySeconds): arms a StartGame attempt
+    // after server boot (MissionServer.OnInit) and after each round returns to idle. StartGame's
+    // own IDLE/config gates stay authoritative; this only schedules the attempt.
+    void ScheduleAutostartIfEnabled(string reasonTag)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (!EnsureConfig())
+            return;
+
+        if (!m_Config.GetAutostart())
+            return;
+
+        if (m_State != NexoDM_State.IDLE)
+            return;
+
+        EnsureTimers();
+        StopTimer(m_AutostartTimer);
+
+        int delaySeconds = m_Config.GetAutostartDelaySeconds();
+        float delay = delaySeconds;
+        string callbackName = "OnAutostartTimer";
+        // R2: Timer.Run(float,Managed,string,Param,bool) in scripts/3_game/tools/tools.c:595.
+        m_AutostartTimer.Run(delay, this, callbackName, NULL, false);
+
+        string armedMessage = "autostart armed +";
+        armedMessage = armedMessage + delaySeconds.ToString();
+        armedMessage = armedMessage + "s (";
+        armedMessage = armedMessage + reasonTag;
+        armedMessage = armedMessage + ")";
+        LogRound(armedMessage);
+#endif
+    }
+
+    void OnAutostartTimer()
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        if (m_State != NexoDM_State.IDLE)
+        {
+            // A manually started round is in progress; its ReturnToIdle re-arms the loop.
+            string busyMessage = "autostart skipped: round in progress";
+            LogRound(busyMessage);
+            return;
+        }
+
+        string firingMessage = "autostart firing";
+        LogRound(firingMessage);
+        StartGame();
+
+        // A rejected start (config load/validate failure) leaves the state IDLE: re-arm so a
+        // live config fix resumes the unsupervised loop without waiting for the next restart.
+        if (m_State == NexoDM_State.IDLE)
+            ScheduleAutostartIfEnabled("retry after rejected start");
+#endif
+    }
+
+    void OnRoundTimeout()
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+
+        // Fail-closed: only an ACTIVE round can time out. Also guards the victory/timeout race
+        // (a victory already moved state to ENDED, so this becomes a no-op).
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+
+        string winnerId = ComputeWinnerByTiebreak();
+        string detail = "round timed out";
+        LogRule(NexoDM_Constants.RULE_TIMEOUT_RECORDED, detail);
+
+        string timeoutReason = "timeout";
+        EndRound(timeoutReason, winnerId);
+#endif
+    }
+
+    protected string ComputeWinnerByTiebreak()
+    {
+#ifdef SERVER
+        EnsureCollections();
+
+        string bestId = string.Empty;
+        NexoDM_PlayerEntry best = null;
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry)
+                continue;
+
+            if (entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+
+            // F-01: a disconnected participant must not win the tiebreak (ghost winner).
+            if (!IsEntryOnline(entry))
+                continue;
+
+            if (!best || IsBetterByTiebreak(entry, best))
+            {
+                best = entry;
+                bestId = m_PlayerEntries.GetKey(index);
+            }
+        }
+
+        return bestId;
+#else
+        return string.Empty;
+#endif
+    }
+
+    protected bool IsBetterByTiebreak(NexoDM_PlayerEntry candidate, NexoDM_PlayerEntry current)
+    {
+        // Tiebreak: more kills, then more assists, then fewer deaths.
+        if (candidate.kills != current.kills)
+            return candidate.kills > current.kills;
+
+        if (candidate.assists != current.assists)
+            return candidate.assists > current.assists;
+
+        if (candidate.deaths != current.deaths)
+            return candidate.deaths < current.deaths;
+
+        return false;
+    }
+
+    protected string GetPlayerName(string steamId)
+    {
+#ifdef SERVER
+        if (steamId == string.Empty)
+            return string.Empty;
+
+        PlayerBase player = FindPlayerBySteamId(steamId);
+        if (!player)
+            return string.Empty;
+
+        PlayerIdentity identity = player.GetIdentity();
+        if (!identity)
+            return string.Empty;
+
+        // R2: PlayerIdentity.GetName() in scripts/3_game/gameplay.c:362 (PlayerIdentityBase).
+        return identity.GetName();
+#else
+        return string.Empty;
+#endif
+    }
+
+    protected void EnrollConnectedParticipants()
+    {
+#ifdef SERVER
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        array<Man> players = new array<Man>();
+        // R2: DayZGame.GetPlayers(out array<Man>) in scripts/3_game/global/game.c:947.
+        game.GetPlayers(players);
+
+        int index = 0;
+        for (index = 0; index < players.Count(); index = index + 1)
+        {
+            PlayerBase player = PlayerBase.Cast(players.Get(index));
+            if (!player)
+                continue;
+
+            PlayerIdentity identity = player.GetIdentity();
+            if (!identity)
+                continue;
+
+            string steamId = identity.GetPlainId();
+            if (steamId == string.Empty)
+                continue;
+
+            NexoDM_PlayerEntry entry = GetOrCreateEntry(steamId);
+            entry.role = NexoDM_Role.PARTICIPANT;
+            ApplyRoleToPlayer(player, entry.role);
+        }
+#endif
+    }
+
+    protected NexoDM_PlayerEntry GetOrCreateEntry(string steamId)
+    {
+        EnsureCollections();
+        NexoDM_PlayerEntry entry = GetEntry(steamId);
+        if (entry)
+            return entry;
+
+        entry = new NexoDM_PlayerEntry();
+        entry.steamId = steamId;
+        m_PlayerEntries.Set(steamId, entry);
+        return entry;
+    }
+
+    protected NexoDM_PlayerEntry GetEntry(string steamId)
+    {
+        EnsureCollections();
+        if (steamId == string.Empty)
+            return null;
+
+        if (!m_PlayerEntries.Contains(steamId))
+            return null;
+
+        return m_PlayerEntries.Get(steamId);
+    }
+
+    protected bool EnsureConfig()
+    {
+#ifdef SERVER
+        if (m_Config)
+            return true;
+
+        // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:25.
+        m_Config = NexoDM_Config.Load();
+        if (m_Config)
+            return true;
+#endif
+        return false;
+    }
+
+    protected PlayerBase FindPlayerBySteamId(string steamId)
+    {
+#ifdef SERVER
+        if (steamId == string.Empty)
+            return null;
+
+        DayZGame game = GetGame();
+        if (!game)
+            return null;
+
+        array<Man> players = new array<Man>();
+        // R2: DayZGame.GetPlayers(out array<Man>) in scripts/3_game/global/game.c:947.
+        game.GetPlayers(players);
+
+        int index = 0;
+        for (index = 0; index < players.Count(); index = index + 1)
+        {
+            PlayerBase player = PlayerBase.Cast(players.Get(index));
+            if (!player)
+                continue;
+
+            PlayerIdentity identity = player.GetIdentity();
+            if (!identity)
+                continue;
+
+            string playerSteamId = identity.GetPlainId();
+            if (playerSteamId == steamId)
+                return player;
+        }
+#endif
+        return null;
+    }
+
+    protected PlayerBase ResolveObjectPlayer(Object obj)
+    {
+        if (!obj)
+            return null;
+
+        PlayerBase directPlayer = PlayerBase.Cast(obj);
+        if (directPlayer)
+            return directPlayer;
+
+        EntityAI entity = EntityAI.Cast(obj);
+        if (!entity)
+            return null;
+
+        // R2: EntityAI.GetHierarchyRootPlayer() in scripts/3_game/entities/entityai.c:877.
+        Man rootMan = entity.GetHierarchyRootPlayer();
+        PlayerBase rootPlayer = PlayerBase.Cast(rootMan);
+        return rootPlayer;
+    }
+
+    protected PlayerBase ResolveSourcePlayer(EntityAI source)
+    {
+        if (!source)
+            return null;
+
+        PlayerBase directPlayer = PlayerBase.Cast(source);
+        if (directPlayer)
+            return directPlayer;
+
+        // R2: EntityAI.GetHierarchyRootPlayer() in scripts/3_game/entities/entityai.c:877.
+        Man rootMan = source.GetHierarchyRootPlayer();
+        PlayerBase rootPlayer = PlayerBase.Cast(rootMan);
+        return rootPlayer;
+    }
+
+    protected void ApplyRoleToOnlinePlayer(string steamId, int role)
+    {
+#ifdef SERVER
+        PlayerBase player = FindPlayerBySteamId(steamId);
+        if (player)
+            ApplyRoleToPlayer(player, role);
+#endif
+    }
+
+    protected void ApplyRoleToPlayer(PlayerBase player, int role)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+
+        player.m_GG_Role = role;
+        // R2: EntityAI.SetSynchDirty() in scripts/3_game/entities/entityai.c:3069.
+        player.SetSynchDirty();
+#endif
+    }
+
+    protected void RevertFreezeIfApplied()
+    {
+#ifdef SERVER
+        StopTimer(m_FreezeTimer);
+        SetFreezeForEntries(false);
+#endif
+    }
+
+    protected bool CanMutateState()
+    {
+#ifdef SERVER
+        // R2: GetGame() in scripts/3_game/gameplay.c:636; DayZGame.IsDedicatedServer() in scripts/3_game/global/game.c:1127.
+        DayZGame game = GetGame();
+        if (!game)
+            return false;
+
+        if (!game.IsDedicatedServer())
+            return false;
+
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    protected void EnsureCollections()
+    {
+        if (!m_PlayerEntries)
+            m_PlayerEntries = new map<string, ref NexoDM_PlayerEntry>;
+        if (!m_WarnLog)
+            m_WarnLog = new map<string, int>;
+    }
+
+    protected void EnsureTimers()
+    {
+        if (!m_RoundTimer)
+            m_RoundTimer = new Timer();
+        if (!m_EndStateTimer)
+            m_EndStateTimer = new Timer();
+        if (!m_FreezeTimer)
+            m_FreezeTimer = new Timer();
+        if (!m_AutostartTimer)
+            m_AutostartTimer = new Timer();
+    }
+
+    protected void StopTimer(Timer timer)
+    {
+        if (!timer)
+            return;
+
+        // R2: Timer.IsRunning() in scripts/3_game/tools/tools.c:264; Timer.Stop() in scripts/3_game/tools/tools.c:617.
+        if (timer.IsRunning())
+            timer.Stop();
+    }
+
+    protected void LogRound(string detail)
+    {
+        string message = "[NexoDM] ";
+        message = message + detail;
+        // R2: Print(void) in scripts/1_core/proto/endebug.c:96.
+        Print(message);
+    }
+
+    protected void LogRule(string ruleId, string detail)
+    {
+        EnsureCollections();
+
+        int now = 0;
+        // R2: GetGame() in scripts/3_game/gameplay.c:636; DayZGame.GetTime() in scripts/3_game/global/game.c:1510.
+        if (GetGame())
+            now = GetGame().GetTime();
+
+        int last = 0;
+        // R2: map.Find(TKey,out TValue) in scripts/1_core/proto/enscript.c:858.
+        if (m_WarnLog.Find(ruleId, last))
+        {
+            int elapsed = now - last;
+            if (elapsed >= 0 && elapsed < NexoDM_Constants.LOG_RULE_INTERVAL_MS)
+                return;
+        }
+
+        // R2: map.Set(TKey,TValue) in scripts/1_core/proto/enscript.c:883.
+        m_WarnLog.Set(ruleId, now);
+
+        string message = "[NexoDM][RoundManager] ";
+        message = message + ruleId;
+        message = message + " ";
+        message = message + detail;
+        // R2: Print(void) in scripts/1_core/proto/endebug.c:96.
+        Print(message);
+    }
+}
