@@ -6,6 +6,14 @@ class NexoDM_HudTopRow
     int deaths;
 }
 
+class NexoDM_HudGlobalRow
+{
+    string name;
+    int points;
+    int kills;
+    int isReceiver;
+}
+
 class NexoDM_HudKillLine
 {
     string killerName;
@@ -37,6 +45,8 @@ class NexoDM_HudData
     protected int m_Rank;
 
     protected ref array<ref NexoDM_HudTopRow> m_Top;
+    protected ref array<ref NexoDM_HudGlobalRow> m_Global;
+    protected int m_GlobalSerial;
     protected ref array<ref NexoDM_HudKillLine> m_KillsFeed;
 
     void NexoDM_HudData()
@@ -57,6 +67,8 @@ class NexoDM_HudData
         m_Deaths = 0;
         m_Rank = 0;
         m_Top = new array<ref NexoDM_HudTopRow>;
+        m_Global = new array<ref NexoDM_HudGlobalRow>;
+        m_GlobalSerial = 0;
         m_KillsFeed = new array<ref NexoDM_HudKillLine>;
     }
 
@@ -124,8 +136,31 @@ class NexoDM_HudData
         m_Rank = 0;
         if (m_Top)
             m_Top.Clear();
+        if (m_Global)
+            m_Global.Clear();
+        m_GlobalSerial = 0;
         if (m_KillsFeed)
             m_KillsFeed.Clear();
+    }
+
+    // Body removal after the round must not drop the global top before its 10 s.
+    void ResetExceptGlobal()
+    {
+        int keptSerial = m_GlobalSerial;
+        array<ref NexoDM_HudGlobalRow> keptRows = new array<ref NexoDM_HudGlobalRow>;
+        if (m_Global)
+        {
+            int index = 0;
+            for (index = 0; index < m_Global.Count(); index = index + 1)
+                keptRows.Insert(m_Global.Get(index));
+        }
+        Reset();
+        m_GlobalSerial = keptSerial;
+        if (!m_Global)
+            m_Global = new array<ref NexoDM_HudGlobalRow>;
+        int put = 0;
+        for (put = 0; put < keptRows.Count(); put = put + 1)
+            m_Global.Insert(keptRows.Get(put));
     }
 
     protected void ClearMatchStats()
@@ -293,6 +328,62 @@ class NexoDM_HudData
         return row.deaths;
     }
 
+    void SetGlobal(array<ref NexoDM_HudGlobalRow> rows)
+    {
+        m_Global.Clear();
+        if (rows)
+        {
+            int index = 0;
+            for (index = 0; index < rows.Count(); index = index + 1)
+                m_Global.Insert(rows.Get(index));
+        }
+        m_GlobalSerial = m_GlobalSerial + 1;
+    }
+
+    int GetGlobalSerial()
+    {
+        return m_GlobalSerial;
+    }
+
+    int GetGlobalCount()
+    {
+        if (!m_Global)
+            return 0;
+        return m_Global.Count();
+    }
+
+    string GetGlobalName(int index)
+    {
+        NexoDM_HudGlobalRow row = GlobalRow(index);
+        if (!row)
+            return string.Empty;
+        return row.name;
+    }
+
+    int GetGlobalPoints(int index)
+    {
+        NexoDM_HudGlobalRow row = GlobalRow(index);
+        if (!row)
+            return 0;
+        return row.points;
+    }
+
+    int GetGlobalKills(int index)
+    {
+        NexoDM_HudGlobalRow row = GlobalRow(index);
+        if (!row)
+            return 0;
+        return row.kills;
+    }
+
+    int GetGlobalIsReceiver(int index)
+    {
+        NexoDM_HudGlobalRow row = GlobalRow(index);
+        if (!row)
+            return 0;
+        return row.isReceiver;
+    }
+
     void AddKill(string killerName, string victimName, string weaponClass)
     {
         NexoDM_HudKillLine line = new NexoDM_HudKillLine();
@@ -331,6 +422,15 @@ class NexoDM_HudData
         if (!line)
             return string.Empty;
         return line.weaponClass;
+    }
+
+    protected NexoDM_HudGlobalRow GlobalRow(int index)
+    {
+        if (!m_Global)
+            return null;
+        if (index < 0 || index >= m_Global.Count())
+            return null;
+        return m_Global.Get(index);
     }
 
     protected NexoDM_HudTopRow TopRow(int index)

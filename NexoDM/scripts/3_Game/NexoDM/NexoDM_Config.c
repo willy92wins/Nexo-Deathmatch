@@ -58,6 +58,7 @@ class NexoDM_Config
     int KillsToWin;
     int RespawnDelay;
     int MaxPlayers;
+    int MinPlayersToScore;
     string Knife;
     bool KnifeOneHit;
     bool Autostart;
@@ -125,6 +126,7 @@ class NexoDM_Config
         config.KillsToWin = NexoDM_Constants.DEFAULT_KILLS_TO_WIN;
         config.RespawnDelay = NexoDM_Constants.DEFAULT_RESPAWN_DELAY;
         config.MaxPlayers = NexoDM_Constants.DEFAULT_MAX_PLAYERS_VALUE;
+        config.MinPlayersToScore = NexoDM_Constants.DEFAULT_MIN_PLAYERS_TO_SCORE;
         config.Knife = NexoDM_Constants.DEFAULT_KNIFE;
         config.KnifeOneHit = true;
         config.Autostart = false;
@@ -192,6 +194,13 @@ class NexoDM_Config
             LogRule(NexoDM_Constants.RULE_MAX_PLAYERS_INVALID, NexoDM_Constants.KEY_MAX_PLAYERS);
             valid = false;
         }
+
+        if (MinPlayersToScore < 1)
+        {
+            LogRule(NexoDM_Constants.RULE_MIN_PLAYERS, NexoDM_Constants.KEY_MIN_PLAYERS);
+            valid = false;
+        }
+        // No comparison with MaxPlayers: it no longer caps the round (dev/memory/bug-ledger.md NDM-01).
 
         if (!ValidateKnife())
             valid = false;
@@ -305,6 +314,13 @@ class NexoDM_Config
         if (MaxPlayers >= 2)
             return MaxPlayers;
         return NexoDM_Constants.DEFAULT_MAX_PLAYERS_VALUE;
+    }
+
+    int GetMinPlayersToScore()
+    {
+        if (MinPlayersToScore >= 1)
+            return MinPlayersToScore;
+        return NexoDM_Constants.DEFAULT_MIN_PLAYERS_TO_SCORE;
     }
 
     bool GetAutostart()

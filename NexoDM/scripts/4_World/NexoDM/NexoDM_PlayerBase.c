@@ -64,7 +64,7 @@ modded class PlayerBase
             return;
         }
 
-        if (rpc_type == NexoDM_RPC.HUD_VITALS || rpc_type == NexoDM_RPC.HUD_ROUND || rpc_type == NexoDM_RPC.HUD_SELF || rpc_type == NexoDM_RPC.HUD_TOP5 || rpc_type == NexoDM_RPC.HUD_KILL)
+        if (rpc_type == NexoDM_RPC.HUD_VITALS || rpc_type == NexoDM_RPC.HUD_ROUND || rpc_type == NexoDM_RPC.HUD_SELF || rpc_type == NexoDM_RPC.HUD_TOP5 || rpc_type == NexoDM_RPC.HUD_KILL || rpc_type == NexoDM_RPC.HUD_GLOBAL_TOP10)
         {
 #ifdef SERVER
             // Client must not drive HUD state. Drop the payload.
@@ -80,6 +80,8 @@ modded class PlayerBase
                 NexoDM_HandleHudTop5RPC(ctx);
             if (rpc_type == NexoDM_RPC.HUD_KILL)
                 NexoDM_HandleHudKillRPC(ctx);
+            if (rpc_type == NexoDM_RPC.HUD_GLOBAL_TOP10)
+                NexoDM_HandleHudGlobalTop10RPC(ctx);
             return;
 #endif
         }
@@ -95,7 +97,7 @@ modded class PlayerBase
         {
             NexoDM_HudData data = NexoDM_HudData.Get();
             if (data)
-                data.Reset();
+                data.ResetExceptGlobal();
         }
 #endif
         super.EEDelete(parent);
@@ -558,6 +560,55 @@ modded class PlayerBase
         if (!data)
             return;
         data.SetTop(rows);
+#endif
+    }
+
+    protected void NexoDM_HandleHudGlobalTop10RPC(ParamsReadContext ctx)
+    {
+#ifndef SERVER
+        int count = 0;
+        if (!ctx.Read(count))
+            return;
+        if (count < 0 || count > 10)
+            return;
+
+        array<ref NexoDM_HudGlobalRow> rows = new array<ref NexoDM_HudGlobalRow>;
+        int index = 0;
+        for (index = 0; index < count; index = index + 1)
+        {
+            string name;
+            int points;
+            int kills;
+            int isReceiver;
+            if (!ctx.Read(name))
+                return;
+            if (name == string.Empty)
+                return;
+            if (!ctx.Read(points))
+                return;
+            if (!ctx.Read(kills))
+                return;
+            if (!ctx.Read(isReceiver))
+                return;
+            if (points < 0)
+                return;
+            if (kills < 0)
+                return;
+            if (isReceiver < 0)
+                return;
+
+            NexoDM_HudGlobalRow row = new NexoDM_HudGlobalRow();
+            row.name = name;
+            row.points = points;
+            row.kills = kills;
+            row.isReceiver = isReceiver;
+            rows.Insert(row);
+        }
+
+        NexoDM_HudData data = NexoDM_HudData.Get();
+        if (!data)
+            return;
+        data.SetGlobal(rows);
 #endif
     }
 

@@ -13,6 +13,7 @@ class NexoDM_PlayerEntry : Managed
     string lastKnifeKillerId;   // E2 kill-credit fallback (scripted knife death -> EEKilled killer=null)
     string lastAttackerId;      // Option A: last participant who damaged this player (any weapon); credits the "downer" when the death reports no killer (respawn-suicide while KO / bleed-out)
     int lastAttackerTimeMs;     // GetTime() of the lastAttackerId hit; recency-gated by ATTACKER_CREDIT_WINDOW_MS
+    string playerName;
 
     void NexoDM_PlayerEntry()
     {
@@ -29,6 +30,7 @@ class NexoDM_PlayerEntry : Managed
         lastKnifeKillerId = string.Empty;
         lastAttackerId = string.Empty;
         lastAttackerTimeMs = 0;
+        playerName = string.Empty;
     }
 }
 
@@ -251,6 +253,9 @@ class NexoDM_RoundManager : Managed
             FlushHudTop5();
             // Round is already ENDED: remaining 0, active no. Participants still have their role.
             BroadcastHudRound();
+            // Fichas still exist. Below MinPlayersToScore the file is left untouched.
+            ApplyRoundToLeaderboard();
+            BroadcastGlobalTop10();
         }
 
         // #6: strip weapons/mags/ammo from every connected participant now, so
@@ -980,6 +985,8 @@ class NexoDM_RoundManager : Managed
         if (!entry)
             return;
 
+        RememberPlayerName(entry, identity);
+
         if (entry.role != NexoDM_Role.PARTICIPANT)
             return;
 
@@ -1215,10 +1222,13 @@ class NexoDM_RoundManager : Managed
         if (m_State == NexoDM_State.ACTIVE)
         {
             NexoDM_PlayerEntry activeEntry = GetEntry(steamId);
+            if (activeEntry)
+                RememberPlayerName(activeEntry, identity);
             if (!activeEntry)
             {
                 activeEntry = GetOrCreateEntry(steamId);
                 activeEntry.role = NexoDM_Role.PARTICIPANT;
+                RememberPlayerName(activeEntry, identity);
                 if (player.IsAlive() && EnsureConfig())
                 {
                     vector spawn = PickRandomSpawn();
@@ -1268,6 +1278,7 @@ class NexoDM_RoundManager : Managed
         NexoDM_PlayerEntry entry = GetEntry(steamId);
         if (entry)
         {
+            RememberPlayerName(entry, identity);
             // F3 p8: reconnect in the EndRound->ReturnToIdle window (state ENDED, entries
             // not yet cleared) must end with role NONE, not the stale PARTICIPANT.
             if (m_State == NexoDM_State.ENDED || m_State == NexoDM_State.IDLE)
@@ -1300,6 +1311,9 @@ class NexoDM_RoundManager : Managed
         {
             entry = GetOrCreateEntry(steamId);
             entry.role = NexoDM_Role.PARTICIPANT;
+            // F6 r2 #3: remember the name here too, so a reconnect-only participant who leaves before
+            // EndRound still enters the leaderboard with a name.
+            RememberPlayerName(entry, identity);
             if (player.IsAlive() && EnsureConfig())
             {
                 vector spawn = PickRandomSpawn();
@@ -2916,6 +2930,158 @@ class NexoDM_RoundManager : Managed
         }
     }
 
+    protected void ApplyRoundToLeaderboard()
+    {
+#ifdef SERVER
+        int minimum = NexoDM_Constants.DEFAULT_MIN_PLAYERS_TO_SCORE;
+        if (m_Config)
+            minimum = m_Config.GetMinPlayersToScore();
+
+        array<NexoDM_PlayerEntry> ranked = CollectRoundFichas();
+        int count = ranked.Count();
+        if (count < minimum)
+        {
+            string skipMessage = "no puntúa (";
+            skipMessage = skipMessage + count.ToString();
+            skipMessage = skipMessage + " < ";
+            skipMessage = skipMessage + minimum.ToString();
+            skipMessage = skipMessage + ")";
+            LogRound(skipMessage);
+            return;
+        }
+
+        NexoDM_Leaderboard board = NexoDM_Leaderboard.Get();
+        if (!board)
+            return;
+
+        int place = 0;
+        for (place = 0; place < count; place = place + 1)
+        {
+            NexoDM_PlayerEntry entry = ranked.Get(place);
+            if (!entry)
+                continue;
+            if (entry.steamId == string.Empty)
+                continue;
+
+            int bonus = 0;
+            if (place < NexoDM_Constants.GLOBAL_TOP_ROWS)
+                bonus = NexoDM_Constants.PLACE_BONUS_FIRST - place;
+
+            int gained = entry.kills + bonus;
+            string playerName = entry.playerName;
+            string liveName = GetPlayerName(entry.steamId);
+            if (liveName != string.Empty)
+            {
+                playerName = liveName;
+                entry.playerName = liveName;
+            }
+            board.AddRound(entry.steamId, playerName, gained, entry.kills);
+        }
+
+        if (!board.SaveSafe())
+            LogRound("leaderboard no guardado");
+#endif
+    }
+
+    protected void BroadcastGlobalTop10()
+    {
+#ifdef SERVER
+        NexoDM_Leaderboard board = NexoDM_Leaderboard.Get();
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            SendGlobalTop10To(FindPlayerBySteamId(entry.steamId), board);
+        }
+#endif
+    }
+
+    protected void SendGlobalTop10To(PlayerBase player, NexoDM_Leaderboard board)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+        PlayerIdentity identity = player.GetIdentity();
+        if (!identity)
+            return;
+
+        string receiverId = identity.GetPlainId();
+        int rowCount = 0;
+        if (board)
+            rowCount = board.GetCount();
+        if (rowCount > NexoDM_Constants.GLOBAL_TOP_ROWS)
+            rowCount = NexoDM_Constants.GLOBAL_TOP_ROWS;
+
+        ScriptRPC rpc = new ScriptRPC();
+        rpc.Write(rowCount);
+        int index = 0;
+        for (index = 0; index < rowCount; index = index + 1)
+        {
+            NexoDM_LeaderboardEntry row = null;
+            if (board)
+                row = board.GetEntry(index);
+
+            string rowName = string.Empty;
+            int rowPoints = 0;
+            int rowKills = 0;
+            int isReceiver = 0;
+            if (row)
+            {
+                rowName = row.name;
+                if (rowName == string.Empty)
+                    rowName = row.steamId;
+                rowPoints = row.points;
+                rowKills = row.kills;
+                if (row.steamId == receiverId)
+                    isReceiver = 1;
+            }
+            rpc.Write(rowName);
+            rpc.Write(rowPoints);
+            rpc.Write(rowKills);
+            rpc.Write(isReceiver);
+        }
+        rpc.Send(player, NexoDM_RPC.HUD_GLOBAL_TOP10, true, identity);
+#endif
+    }
+
+    // Every participant ficha of this round, online or not. Same comparator as the round table.
+    protected array<NexoDM_PlayerEntry> CollectRoundFichas()
+    {
+        array<NexoDM_PlayerEntry> ranked = new array<NexoDM_PlayerEntry>;
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry counted = m_PlayerEntries.GetElement(index);
+            if (counted && counted.role == NexoDM_Role.PARTICIPANT)
+                ranked.Insert(counted);
+        }
+
+        int a = 0;
+        int b = 0;
+        for (a = 0; a < ranked.Count(); a = a + 1)
+        {
+            int best = a;
+            for (b = a + 1; b < ranked.Count(); b = b + 1)
+            {
+                if (IsBetterByTiebreak(ranked.Get(b), ranked.Get(best)))
+                    best = b;
+            }
+            if (best != a)
+            {
+                NexoDM_PlayerEntry swap = ranked.Get(a);
+                ranked.Set(a, ranked.Get(best));
+                ranked.Set(best, swap);
+            }
+        }
+#endif
+        return ranked;
+    }
+
     // Same order as OnScoreboardRequest: online participants, IsBetterByTiebreak, best first.
     protected array<NexoDM_PlayerEntry> CollectRankedParticipants()
     {
@@ -3021,9 +3187,21 @@ class NexoDM_RoundManager : Managed
 
             NexoDM_PlayerEntry entry = GetOrCreateEntry(steamId);
             entry.role = NexoDM_Role.PARTICIPANT;
+            RememberPlayerName(entry, identity);
             ApplyRoleToPlayer(player, entry.role);
         }
 #endif
+    }
+
+    protected void RememberPlayerName(NexoDM_PlayerEntry entry, PlayerIdentity identity)
+    {
+        if (!entry || !identity)
+            return;
+        // R2: PlayerIdentity.GetName() in scripts/3_game/gameplay.c:362.
+        string seenName = identity.GetName();
+        if (seenName == string.Empty)
+            return;
+        entry.playerName = seenName;
     }
 
     protected NexoDM_PlayerEntry GetOrCreateEntry(string steamId)

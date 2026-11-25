@@ -12,6 +12,7 @@
 "STR_NEXODM_SCOREBOARD_TITLE","Clasificacion","Clasificación","Leaderboard"
 "STR_NEXODM_HUD_WEAPON","Arma","Arma","Weapon"
 "STR_NEXODM_HUD_TOP5","Top 5","Top 5","Top 5"
+"STR_NEXODM_HUD_GLOBAL_TOP","Top 10 global","Top 10 global","Global top 10"
 "STR_NEXODM_HUD_MAGAZINE","Cargador","Cargador","Magazine"
 "STR_NEXODM_HUD_KILLS_LABEL","bajas","bajas","kills"
 "STR_NEXODM_HUD_GOAL","A %1 bajas","A %1 bajas","First to %1 kills"
