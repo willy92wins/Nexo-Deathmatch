@@ -175,6 +175,13 @@ modded class PlayerBase
         if (IsPlayerDisconnected())
             return;
 
+        // F7 r2 #2: during the logout countdown OnDisconnect has not run yet, so also stop while the
+        // mission has this player in its logout queue. R2: Mission.IsPlayerDisconnecting(Man) in
+        // scripts/3_game/gameplay.c:730 (MissionServer implementation in scripts/5_mission/mission/missionserver.c:240).
+        Mission koMission = koWakeGame.GetMission();
+        if (koMission && koMission.IsPlayerDisconnecting(this))
+            return;
+
         // R2: Object.IsAlive() in scripts/3_game/entities/object.c:517.
         if (!IsAlive())
             return;
