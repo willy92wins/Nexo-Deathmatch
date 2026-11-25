@@ -13,5 +13,8 @@ En un mundo que no es el del mapa, `Validate` también escribe el aviso `W_CFG_M
 | `invalid_E_CFG_MAPS.json` | `E_CFG_MAPS` | `Maps` | Los dos `WorldName` son `sakhal`. Falla si el mundo cargado no es `sakhal`. En `sakhal` este fixture pasaría la regla de mapas. |
 | `invalid_E_CFG_SPAWN.json` | `E_CFG_SPAWN` | `Points` | El primer punto de cada mapa es `no-es-xyz`. Así falla tanto en `ChernarusPlus` como en `enoch`. |
 | `invalid_E_CFG_PRESET.json` | `E_CFG_PRESET` | `ClothingPreset` | `ClothingPreset` está vacío. `Loadouts` sigue con nombres. La mitad 4_World (preset inexistente en LBmaster) no tiene fixture. |
+| `invalid_E_CFG_MIN_PLAYERS.json` | `E_CFG_MIN_PLAYERS` | `MinPlayersToScore` | `MinPlayersToScore` es 0. El resto copia `ok_config.json`. |
+
+`ok_config.json` lleva `MinPlayersToScore` 20. No se compara con `MaxPlayers`, que ya no limita la ronda (`dev/memory/bug-ledger.md` NDM-01). El resto de fixtures inválidos también llevan 20 para no sumar `E_CFG_MIN_PLAYERS` a su regla.
 
 Línea de log esperada, prefijo incluido: `[NexoDM][Config] <REGLA> <CLAVE>`.

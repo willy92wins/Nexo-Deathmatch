@@ -5,6 +5,7 @@
   "KillsToWin": 30,
   "RespawnDelay": 31,
   "MaxPlayers": 15,
+  "MinPlayersToScore": 20,
   "Knife": "HuntingKnife",
   "KnifeOneHit": true,
   "Autostart": false,

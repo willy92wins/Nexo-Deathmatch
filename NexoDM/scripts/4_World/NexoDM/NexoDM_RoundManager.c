@@ -251,6 +251,9 @@ class NexoDM_RoundManager : Managed
             FlushHudTop5();
             // Round is already ENDED: remaining 0, active no. Participants still have their role.
             BroadcastHudRound();
+            // Fichas still exist. Below MinPlayersToScore the file is left untouched.
+            ApplyRoundToLeaderboard();
+            BroadcastGlobalTop10();
         }
 
         // #6: strip weapons/mags/ammo from every connected participant now, so
@@ -2914,6 +2917,151 @@ class NexoDM_RoundManager : Managed
             m_HudTop5Kills.Insert(kills);
             m_HudTop5Deaths.Insert(deaths);
         }
+    }
+
+    protected void ApplyRoundToLeaderboard()
+    {
+#ifdef SERVER
+        int minimum = NexoDM_Constants.DEFAULT_MIN_PLAYERS_TO_SCORE;
+        if (m_Config)
+            minimum = m_Config.GetMinPlayersToScore();
+
+        array<NexoDM_PlayerEntry> ranked = CollectRoundFichas();
+        int count = ranked.Count();
+        if (count < minimum)
+        {
+            string skipMessage = "no puntúa (";
+            skipMessage = skipMessage + count.ToString();
+            skipMessage = skipMessage + " < ";
+            skipMessage = skipMessage + minimum.ToString();
+            skipMessage = skipMessage + ")";
+            LogRound(skipMessage);
+            return;
+        }
+
+        NexoDM_Leaderboard board = NexoDM_Leaderboard.Get();
+        if (!board)
+            return;
+
+        int place = 0;
+        for (place = 0; place < count; place = place + 1)
+        {
+            NexoDM_PlayerEntry entry = ranked.Get(place);
+            if (!entry)
+                continue;
+            if (entry.steamId == string.Empty)
+                continue;
+
+            int bonus = 0;
+            if (place < NexoDM_Constants.GLOBAL_TOP_ROWS)
+                bonus = NexoDM_Constants.PLACE_BONUS_FIRST - place;
+
+            int gained = entry.kills + bonus;
+            string playerName = GetPlayerName(entry.steamId);
+            board.AddRound(entry.steamId, playerName, gained, entry.kills);
+        }
+
+        board.SaveSafe();
+#endif
+    }
+
+    protected void BroadcastGlobalTop10()
+    {
+#ifdef SERVER
+        NexoDM_Leaderboard board = NexoDM_Leaderboard.Get();
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            SendGlobalTop10To(FindPlayerBySteamId(entry.steamId), board);
+        }
+#endif
+    }
+
+    protected void SendGlobalTop10To(PlayerBase player, NexoDM_Leaderboard board)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+        PlayerIdentity identity = player.GetIdentity();
+        if (!identity)
+            return;
+
+        string receiverId = identity.GetPlainId();
+        int rowCount = 0;
+        if (board)
+            rowCount = board.GetCount();
+        if (rowCount > NexoDM_Constants.GLOBAL_TOP_ROWS)
+            rowCount = NexoDM_Constants.GLOBAL_TOP_ROWS;
+
+        ScriptRPC rpc = new ScriptRPC();
+        rpc.Write(rowCount);
+        int index = 0;
+        for (index = 0; index < rowCount; index = index + 1)
+        {
+            NexoDM_LeaderboardEntry row = null;
+            if (board)
+                row = board.GetEntry(index);
+
+            string rowName = string.Empty;
+            int rowPoints = 0;
+            int rowKills = 0;
+            int isReceiver = 0;
+            if (row)
+            {
+                rowName = row.name;
+                if (rowName == string.Empty)
+                    rowName = row.steamId;
+                rowPoints = row.points;
+                rowKills = row.kills;
+                if (row.steamId == receiverId)
+                    isReceiver = 1;
+            }
+            rpc.Write(rowName);
+            rpc.Write(rowPoints);
+            rpc.Write(rowKills);
+            rpc.Write(isReceiver);
+        }
+        rpc.Send(player, NexoDM_RPC.HUD_GLOBAL_TOP10, true, identity);
+#endif
+    }
+
+    // Every participant ficha of this round, online or not. Same comparator as the round table.
+    protected array<NexoDM_PlayerEntry> CollectRoundFichas()
+    {
+        array<NexoDM_PlayerEntry> ranked = new array<NexoDM_PlayerEntry>;
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry counted = m_PlayerEntries.GetElement(index);
+            if (counted && counted.role == NexoDM_Role.PARTICIPANT)
+                ranked.Insert(counted);
+        }
+
+        int a = 0;
+        int b = 0;
+        for (a = 0; a < ranked.Count(); a = a + 1)
+        {
+            int best = a;
+            for (b = a + 1; b < ranked.Count(); b = b + 1)
+            {
+                if (IsBetterByTiebreak(ranked.Get(b), ranked.Get(best)))
+                    best = b;
+            }
+            if (best != a)
+            {
+                NexoDM_PlayerEntry swap = ranked.Get(a);
+                ranked.Set(a, ranked.Get(best));
+                ranked.Set(best, swap);
+            }
+        }
+#endif
+        return ranked;
     }
 
     // Same order as OnScoreboardRequest: online participants, IsBetterByTiebreak, best first.

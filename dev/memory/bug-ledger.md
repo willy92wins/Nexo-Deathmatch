@@ -166,3 +166,14 @@ Historia durable de bugs que no deben regresar.
 - Join `STR_` (un amigo, cliente inglés): diagnóstico = lo más probable MOD DESACTUALIZADO en su cliente (clave cruda = ausente; DayZ casa columnas del stringtable por NOMBRE — el orden no produce clave cruda; el JoinMenu usa `SetText("#STR_")` que vanilla resuelve). Acción: re-descargar. Si un cliente inglés ACTUALIZADO sigue viéndolo → reordenar stringtable.csv a canónico (NO hecho).
 - Evidence: captura del usuario 2026-06-14; handoff.
 - Status: HUD = FIX OFFLINE (pendiente in-game). Join = OPEN (probable cliente desactualizado, sin confirmar).
+
+
+## NDM-01 · `MaxPlayers` se valida pero ya no limita nada (2026-11-25, abierto, sin decidir)
+
+- Estado: abierto. No se toca hasta decidir.
+- Desde F1 (se quitaron el voto y el rol de público), `MaxPlayers` solo se lee y se valida (≥ 2) en
+  `NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c` (validación ~:190, getter ~:303). Ningún camino de la ronda limita con él a los
+  participantes; antes el límite lo ponía el voto de LFGungame.
+- Consecuencia: el config por defecto (`MaxPlayers: 15`) no impide rondas de más de 15. Por eso F6 no compara
+  `MinPlayersToScore` con `MaxPlayers` (decisión del 25-nov).
+- A decidir: quitar `MaxPlayers` del config o volver a usarlo para limitar la entrada a la ronda.

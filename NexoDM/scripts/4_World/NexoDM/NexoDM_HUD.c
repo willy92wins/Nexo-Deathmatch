@@ -38,6 +38,15 @@ class NexoDM_HUD : Managed
     protected ref array<TextWidget> m_TopDeaths;
     protected ref array<TextWidget> m_TopPoints;
     protected bool m_Top5Held;
+    protected Widget m_GlobalGroup;
+    protected ref array<Widget> m_GlobalRows;
+    protected ref array<ImageWidget> m_GlobalRowBgs;
+    protected ref array<TextWidget> m_GlobalRanks;
+    protected ref array<TextWidget> m_GlobalNames;
+    protected ref array<TextWidget> m_GlobalPoints;
+    protected ref array<TextWidget> m_GlobalKills;
+    protected int m_GlobalSerialSeen;
+    protected float m_GlobalHideAt;
     protected Widget m_WeaponGroup;
     protected ItemPreviewWidget m_WeaponPreview;
     protected TextWidget m_WeaponName;
@@ -96,6 +105,8 @@ class NexoDM_HUD : Managed
         m_WeaponTrackW = 0;
         m_WeaponTrackH = 0;
         m_Top5Held = false;
+        m_GlobalSerialSeen = 0;
+        m_GlobalHideAt = 0;
         m_PrevHealth = -1;
         m_PrevBlood = -1;
         m_PrevWater = -1;
@@ -117,6 +128,12 @@ class NexoDM_HUD : Managed
         m_TopKills = new array<TextWidget>;
         m_TopDeaths = new array<TextWidget>;
         m_TopPoints = new array<TextWidget>;
+        m_GlobalRows = new array<Widget>;
+        m_GlobalRowBgs = new array<ImageWidget>;
+        m_GlobalRanks = new array<TextWidget>;
+        m_GlobalNames = new array<TextWidget>;
+        m_GlobalPoints = new array<TextWidget>;
+        m_GlobalKills = new array<TextWidget>;
         m_KillTimes = new array<float>;
 
         DayZGame game = GetGame();
@@ -177,6 +194,7 @@ class NexoDM_HUD : Managed
         m_ClockMarkLead = null;
         m_KillGroup = null;
         m_TopGroup = null;
+        m_GlobalGroup = null;
         m_WeaponGroup = null;
         m_WeaponName = null;
         m_WeaponAmmo = null;
@@ -218,10 +236,30 @@ class NexoDM_HUD : Managed
         if (m_TopPoints)
             m_TopPoints.Clear();
         m_TopPoints = null;
+        if (m_GlobalRows)
+            m_GlobalRows.Clear();
+        m_GlobalRows = null;
+        if (m_GlobalRowBgs)
+            m_GlobalRowBgs.Clear();
+        m_GlobalRowBgs = null;
+        if (m_GlobalRanks)
+            m_GlobalRanks.Clear();
+        m_GlobalRanks = null;
+        if (m_GlobalNames)
+            m_GlobalNames.Clear();
+        m_GlobalNames = null;
+        if (m_GlobalPoints)
+            m_GlobalPoints.Clear();
+        m_GlobalPoints = null;
+        if (m_GlobalKills)
+            m_GlobalKills.Clear();
+        m_GlobalKills = null;
         if (m_KillTimes)
             m_KillTimes.Clear();
         m_KillTimes = null;
         m_Top5Held = false;
+        m_GlobalSerialSeen = 0;
+        m_GlobalHideAt = 0;
         m_PrevHealth = -1;
         m_PrevBlood = -1;
         m_PrevWater = -1;
@@ -283,6 +321,7 @@ class NexoDM_HUD : Managed
     {
         UpdateCountdown(timeslice);
         UpdateF5b(timeslice);
+        UpdateGlobalTop();
     }
 
     protected void UpdateCountdown(float timeslice)
@@ -391,6 +430,23 @@ class NexoDM_HUD : Managed
             m_TopDeaths.Insert(TextWidget.Cast(m_Root.FindAnyWidget("TopDeaths" + suffix)));
             m_TopPoints.Insert(TextWidget.Cast(m_Root.FindAnyWidget("TopPoints" + suffix)));
         }
+        m_GlobalGroup = m_Root.FindAnyWidget("GlobalTopGroup");
+        TextWidget globalTitle = TextWidget.Cast(m_Root.FindAnyWidget("GlobalTitle"));
+        if (globalTitle)
+            globalTitle.SetText(Widget.TranslateString("#STR_NEXODM_HUD_GLOBAL_TOP"));
+        int globalIndex = 0;
+        for (globalIndex = 0; globalIndex < 10; globalIndex = globalIndex + 1)
+        {
+            string globalSuffix = globalIndex.ToString();
+            m_GlobalRows.Insert(m_Root.FindAnyWidget("GlobalRow" + globalSuffix));
+            m_GlobalRowBgs.Insert(ImageWidget.Cast(m_Root.FindAnyWidget("GlobalRowBg" + globalSuffix)));
+            m_GlobalRanks.Insert(TextWidget.Cast(m_Root.FindAnyWidget("GlobalRank" + globalSuffix)));
+            m_GlobalNames.Insert(TextWidget.Cast(m_Root.FindAnyWidget("GlobalName" + globalSuffix)));
+            m_GlobalPoints.Insert(TextWidget.Cast(m_Root.FindAnyWidget("GlobalPoints" + globalSuffix)));
+            m_GlobalKills.Insert(TextWidget.Cast(m_Root.FindAnyWidget("GlobalKills" + globalSuffix)));
+        }
+        if (m_GlobalGroup)
+            m_GlobalGroup.Show(false);
     }
 
     protected void HideF5bGroups()
@@ -908,6 +964,103 @@ class NexoDM_HUD : Managed
             {
                 pointsWidget.SetText(data.GetTopPoints(rowIndex).ToString());
                 pointsWidget.SetColor(textColor);
+            }
+        }
+    }
+
+    protected void UpdateGlobalTop()
+    {
+        if (!m_GlobalGroup)
+            return;
+
+        NexoDM_HudData data = NexoDM_HudData.Get();
+        int serial = 0;
+        if (data)
+            serial = data.GetGlobalSerial();
+
+        if (serial != m_GlobalSerialSeen)
+        {
+            m_GlobalSerialSeen = serial;
+            if (serial > 0)
+                m_GlobalHideAt = m_HudTime + NexoDM_Constants.GLOBAL_TOP_SHOW_SEC;
+        }
+
+        bool showPanel = false;
+        if (serial > 0 && m_HudTime < m_GlobalHideAt)
+            showPanel = true;
+        m_GlobalGroup.Show(showPanel);
+        if (!showPanel || !data)
+            return;
+
+        int rowIndex = 0;
+        for (rowIndex = 0; rowIndex < 10; rowIndex = rowIndex + 1)
+        {
+            Widget row = null;
+            if (rowIndex < m_GlobalRows.Count())
+                row = m_GlobalRows.Get(rowIndex);
+            if (rowIndex >= data.GetGlobalCount())
+            {
+                if (row)
+                    row.Show(false);
+                continue;
+            }
+            if (row)
+                row.Show(true);
+
+            bool isMe = false;
+            if (data.GetGlobalIsReceiver(rowIndex) != 0)
+                isMe = true;
+
+            ImageWidget bg = null;
+            if (rowIndex < m_GlobalRowBgs.Count())
+                bg = m_GlobalRowBgs.Get(rowIndex);
+            if (bg)
+            {
+                if (isMe)
+                    bg.SetColor(ARGB(255, 0, 0, 0));
+                else
+                    bg.SetColor(ARGB(0, 0, 0, 0));
+            }
+
+            int textColor = ARGB(255, 255, 255, 255);
+            int dimColor = ARGB(255, 200, 200, 200);
+            if (isMe)
+            {
+                textColor = ARGB(255, 255, 0, 0);
+                dimColor = ARGB(255, 255, 0, 0);
+            }
+
+            TextWidget rankWidget = null;
+            if (rowIndex < m_GlobalRanks.Count())
+                rankWidget = m_GlobalRanks.Get(rowIndex);
+            if (rankWidget)
+            {
+                rankWidget.SetText((rowIndex + 1).ToString());
+                rankWidget.SetColor(dimColor);
+            }
+            TextWidget nameWidget = null;
+            if (rowIndex < m_GlobalNames.Count())
+                nameWidget = m_GlobalNames.Get(rowIndex);
+            if (nameWidget)
+            {
+                nameWidget.SetText(data.GetGlobalName(rowIndex));
+                nameWidget.SetColor(textColor);
+            }
+            TextWidget pointsWidget = null;
+            if (rowIndex < m_GlobalPoints.Count())
+                pointsWidget = m_GlobalPoints.Get(rowIndex);
+            if (pointsWidget)
+            {
+                pointsWidget.SetText(data.GetGlobalPoints(rowIndex).ToString());
+                pointsWidget.SetColor(textColor);
+            }
+            TextWidget killsWidget = null;
+            if (rowIndex < m_GlobalKills.Count())
+                killsWidget = m_GlobalKills.Get(rowIndex);
+            if (killsWidget)
+            {
+                killsWidget.SetText(data.GetGlobalKills(rowIndex).ToString());
+                killsWidget.SetColor(textColor);
             }
         }
     }

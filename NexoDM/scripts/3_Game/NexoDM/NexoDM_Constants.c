@@ -15,6 +15,10 @@ class NexoDM_Constants
 {
     static const string PROFILE_DIR = "$profile:NexoDM";
     static const string CONFIG_PATH = "$profile:NexoDM\\config.json";
+    static const string LEADERBOARD_PATH = "$profile:NexoDM\\leaderboard.json";
+    static const string LEADERBOARD_TMP_PATH = "$profile:NexoDM\\leaderboard.json.tmp";
+    static const string LEADERBOARD_BAK_PATH = "$profile:NexoDM\\leaderboard.json.bak";
+    static const string LEADERBOARD_BROKEN_PATH = "$profile:NexoDM\\leaderboard.json.broken";
 
     static const int DEFAULT_VERSION = 1;
     static const string DEFAULT_ADMIN = "CAMBIAR_STEAMID64";
@@ -27,6 +31,10 @@ class NexoDM_Constants
     static const int DEFAULT_RESPAWN_DELAY = 5;
     static const int RESPAWN_DELAY_MAX = 30;
     static const int DEFAULT_MAX_PLAYERS_VALUE = 15;
+    static const int DEFAULT_MIN_PLAYERS_TO_SCORE = 20;
+    static const int GLOBAL_TOP_ROWS = 10;
+    static const int GLOBAL_TOP_SHOW_SEC = 10;
+    static const int PLACE_BONUS_FIRST = 10;
     static const int DEFAULT_AUTOSTART_DELAY_VALUE = 300;
     static const float DEFAULT_SPAWN_RADIUS = 3.0;
     // Fresh-character routing (connect/respawn) runs one tick after creation, off the creation tick,
@@ -48,6 +56,7 @@ class NexoDM_Constants
     static const string KEY_KILLS_TO_WIN = "KillsToWin";
     static const string KEY_RESPAWN_DELAY = "RespawnDelay";
     static const string KEY_MAX_PLAYERS = "MaxPlayers";
+    static const string KEY_MIN_PLAYERS = "MinPlayersToScore";
     static const string KEY_MAPS = "Maps";
     static const string KEY_SPAWN_GROUPS = "SpawnGroups";
     static const string KEY_POINTS = "Points";
@@ -72,6 +81,7 @@ class NexoDM_Constants
     static const string RULE_PRESET = "E_CFG_PRESET";
     static const string RULE_KNIFE_INVALID = "E_CFG_KNIFE_INVALID";
     static const string RULE_MAX_PLAYERS_INVALID = "E_CFG_MAX_PLAYERS_INVALID";
+    static const string RULE_MIN_PLAYERS = "E_CFG_MIN_PLAYERS";
     static const string RULE_AUTOSTART_DELAY_INVALID = "E_CFG_AUTOSTART_DELAY_INVALID";
     static const string RULE_KILL_RECORDED = "KILL_RECORDED";
     static const string RULE_DEATH_RECORDED = "DEATH_RECORDED";
