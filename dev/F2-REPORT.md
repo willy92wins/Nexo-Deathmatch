@@ -59,3 +59,10 @@ El validador (`ES-VARIABLE-NAMED-AS-TYPE`) rechazaba el miembro `World` en `Nexo
 - Esta sección y la regla 4 de arriba.
 
 Grep `\bWorld\b` en `NexoDM/scripts`: sin coincidencias (no queda un identificador `World` propio; `GetWorldName` y `WorldMatches` siguen). En los 7 fixtures, `"World"` ya no aparece.
+
+## Corrección 2
+
+1. `Load` comprueba `config` null después de `LoadFile` y, si lo es, loguea `E_CFG_LOAD_FAILED` y devuelve null. `NexoDM_Config.c:109-113`.
+2. `E_CFG_*` y `W_CFG_MAP_OTHER_WORLD` no pasan por la deduplicación de 30 s. `IsUnguardedConfigRule` en `NexoDM_Config.c:722` y el `if` de `LogRule` en `:744`. El mismo salto está en `NexoDM_RoundManager.c:2190-2211`. El resto de `LogRule` sigue con el intervalo.
+3. `LoadoutPresetsExist` escribe una línea por preset que falta, con `.Trim()`, prefijo `[NexoDM][Config]` y la clave `ClothingPreset` o `Loadouts`. `NexoDM_RoundManager.c:1215-1254` y `LogMissingPreset` en `:1258`.
+4. Vaciados (el visor los muestra sin contenido; no pude medir el tamaño en bytes): `invalid_gunpresets_empty.json`, `invalid_knife_missing.json`, `invalid_maxplayers_out_of_range.json`, `invalid_preset_missing.json`, `invalid_roundduration_zero.json`. `EXPECTED.md` no los cita, así que no lo toqué.

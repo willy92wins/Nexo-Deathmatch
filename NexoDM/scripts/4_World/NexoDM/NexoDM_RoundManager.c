@@ -1211,51 +1211,61 @@ class NexoDM_RoundManager : Managed
         if (!m_Config)
             return false;
 
-        array<string> names = new array<string>();
-        names.Insert(m_Config.GetClothingPreset());
+        // R2: string.Trim() in scripts/1_core/proto/enstring.c:304. Same trim as ValidatePresetField.
+        string clothing = m_Config.GetClothingPreset().Trim();
         array<string> loadouts = m_Config.GetLoadouts();
-        if (loadouts)
-        {
-            int i = 0;
-            for (i = 0; i < loadouts.Count(); i = i + 1)
-                names.Insert(loadouts.Get(i));
-        }
+        bool resolved = true;
 
-        string missing = string.Empty;
         if (!LB_PresetLoader.Get)
         {
-            int missingIndex = 0;
-            for (missingIndex = 0; missingIndex < names.Count(); missingIndex = missingIndex + 1)
+            LogMissingPreset(NexoDM_Constants.KEY_CLOTHING_PRESET, clothing);
+            if (loadouts)
             {
-                if (missing != string.Empty)
-                    missing = missing + " ";
-                missing = missing + names.Get(missingIndex);
+                int missingIndex = 0;
+                for (missingIndex = 0; missingIndex < loadouts.Count(); missingIndex = missingIndex + 1)
+                    LogMissingPreset(NexoDM_Constants.KEY_LOADOUTS, loadouts.Get(missingIndex));
             }
-            LogRule(NexoDM_Constants.RULE_PRESET, missing);
             return false;
         }
 
-        int nameIndex = 0;
-        for (nameIndex = 0; nameIndex < names.Count(); nameIndex = nameIndex + 1)
+        // R2: LB_PresetLoader.GetPreset(string) in LBmaster_Core/scripts/4_World/LBmaster_Core/Config/LB_PresetLoader.c:146.
+        LB_PresetBase clothingPreset = LB_PresetLoader.Get.GetPreset(clothing);
+        if (!clothingPreset)
         {
-            string presetName = names.Get(nameIndex);
-            // R2: LB_PresetLoader.GetPreset(string) in LBmaster_Core/scripts/4_World/LBmaster_Core/Config/LB_PresetLoader.c:146.
-            LB_PresetBase preset = LB_PresetLoader.Get.GetPreset(presetName);
-            if (!preset)
+            LogMissingPreset(NexoDM_Constants.KEY_CLOTHING_PRESET, clothing);
+            resolved = false;
+        }
+
+        if (loadouts)
+        {
+            int nameIndex = 0;
+            for (nameIndex = 0; nameIndex < loadouts.Count(); nameIndex = nameIndex + 1)
             {
-                if (missing != string.Empty)
-                    missing = missing + " ";
-                missing = missing + presetName;
+                string loadoutName = loadouts.Get(nameIndex).Trim();
+                LB_PresetBase loadoutPreset = LB_PresetLoader.Get.GetPreset(loadoutName);
+                if (!loadoutPreset)
+                {
+                    LogMissingPreset(NexoDM_Constants.KEY_LOADOUTS, loadoutName);
+                    resolved = false;
+                }
             }
         }
 
-        if (missing != string.Empty)
-        {
-            LogRule(NexoDM_Constants.RULE_PRESET, missing);
-            return false;
-        }
+        return resolved;
+    }
 
-        return true;
+    // One line per missing preset. Prefix is the config log, not RoundManager, and it is not rate-limited.
+    protected void LogMissingPreset(string fieldName, string presetName)
+    {
+        string trimmedName = presetName.Trim();
+        string message = NexoDM_Constants.LOG_PREFIX;
+        message = message + NexoDM_Constants.RULE_PRESET;
+        message = message + " ";
+        message = message + fieldName;
+        message = message + " ";
+        message = message + trimmedName;
+        // R2: Print(void) in scripts/1_core/proto/endebug.c:96.
+        Print(message);
     }
 
     protected void WipeInventory(PlayerBase player)
@@ -2177,17 +2187,28 @@ class NexoDM_RoundManager : Managed
         if (GetGame())
             now = GetGame().GetTime();
 
-        int last = 0;
-        // R2: map.Find(TKey,out TValue) in scripts/1_core/proto/enscript.c:858.
-        if (m_WarnLog.Find(ruleId, last))
-        {
-            int elapsed = now - last;
-            if (elapsed >= 0 && elapsed < NexoDM_Constants.LOG_RULE_INTERVAL_MS)
-                return;
-        }
+        // Same gate as NexoDM_Config.LogRule: config validation lines are not rate-limited.
+        bool unguarded = false;
+        if (ruleId == NexoDM_Constants.RULE_MAP_OTHER_WORLD)
+            unguarded = true;
+        // R2: string.IndexOf(string) in scripts/1_core/proto/enstring.c:240.
+        if (ruleId.IndexOf("E_CFG_") == 0)
+            unguarded = true;
 
-        // R2: map.Set(TKey,TValue) in scripts/1_core/proto/enscript.c:883.
-        m_WarnLog.Set(ruleId, now);
+        if (!unguarded)
+        {
+            int last = 0;
+            // R2: map.Find(TKey,out TValue) in scripts/1_core/proto/enscript.c:858.
+            if (m_WarnLog.Find(ruleId, last))
+            {
+                int elapsed = now - last;
+                if (elapsed >= 0 && elapsed < NexoDM_Constants.LOG_RULE_INTERVAL_MS)
+                    return;
+            }
+
+            // R2: map.Set(TKey,TValue) in scripts/1_core/proto/enscript.c:883.
+            m_WarnLog.Set(ruleId, now);
+        }
 
         string message = "[NexoDM][RoundManager] ";
         message = message + ruleId;

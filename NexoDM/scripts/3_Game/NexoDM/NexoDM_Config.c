@@ -106,6 +106,12 @@ class NexoDM_Config
             return null;
         }
 
+        if (!config)
+        {
+            LogRule(NexoDM_Constants.RULE_LOAD_FAILED, errorMessage);
+            return null;
+        }
+
         config.EnsureArrays();
         return config;
     }
@@ -713,6 +719,16 @@ class NexoDM_Config
         return group;
     }
 
+    protected static bool IsUnguardedConfigRule(string ruleId)
+    {
+        if (ruleId == NexoDM_Constants.RULE_MAP_OTHER_WORLD)
+            return true;
+        // R2: string.IndexOf(string) in scripts/1_core/proto/enstring.c:240.
+        if (ruleId.IndexOf("E_CFG_") == 0)
+            return true;
+        return false;
+    }
+
     protected static void LogRule(string ruleId, string detail)
     {
         if (!s_LastRuleLog)
@@ -723,17 +739,22 @@ class NexoDM_Config
         if (GetGame())
             now = GetGame().GetTime();
 
-        int last = 0;
-        // R2: map.Find(TKey,out TValue) in scripts/1_core/proto/enscript.c:858.
-        if (s_LastRuleLog.Find(ruleId, last))
+        // E_CFG_* and W_CFG_MAP_OTHER_WORLD always print. The 30 s gate hid a second other-world map
+        // and a retry of StartGame inside that window.
+        if (!IsUnguardedConfigRule(ruleId))
         {
-            int elapsed = now - last;
-            if (elapsed >= 0 && elapsed < NexoDM_Constants.LOG_RULE_INTERVAL_MS)
-                return;
-        }
+            int last = 0;
+            // R2: map.Find(TKey,out TValue) in scripts/1_core/proto/enscript.c:858.
+            if (s_LastRuleLog.Find(ruleId, last))
+            {
+                int elapsed = now - last;
+                if (elapsed >= 0 && elapsed < NexoDM_Constants.LOG_RULE_INTERVAL_MS)
+                    return;
+            }
 
-        // R2: map.Set(TKey,TValue) in scripts/1_core/proto/enscript.c:883.
-        s_LastRuleLog.Set(ruleId, now);
+            // R2: map.Set(TKey,TValue) in scripts/1_core/proto/enscript.c:883.
+            s_LastRuleLog.Set(ruleId, now);
+        }
 
         string message = NexoDM_Constants.LOG_PREFIX;
         message = message + ruleId;
