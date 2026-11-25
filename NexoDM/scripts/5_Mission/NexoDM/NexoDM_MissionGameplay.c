@@ -2,6 +2,7 @@ modded class MissionGameplay
 {
     protected ref NexoDM_HUD m_HUD;
     protected UAInput m_GG_ScoreInput;
+    protected UAInput m_NexoDM_Top5Input;
 
     // R2: MissionGameplay.OnInit() in scripts/5_mission/mission/missiongameplay.c:96.
     override void OnInit()
@@ -55,6 +56,7 @@ modded class MissionGameplay
 
         NexoDM_UpdateScoreboardToggle();
         NexoDM_UpdateScoreboardEscClose();
+        NexoDM_UpdateTop5Hold();
     }
 
     // Correccion 1 (#1): vanilla menu respawn flow, identical to GameRespawn in
@@ -133,6 +135,24 @@ modded class MissionGameplay
 
         if (m_GG_ScoreInput.LocalPress())
             NexoDM_ToggleScoreboard();
+    }
+
+    // F5b: Top 5 visible only while UANexoDMTop5 is held (default T, rebindable).
+    protected void NexoDM_UpdateTop5Hold()
+    {
+        if (!m_HUD)
+            return;
+        if (!m_NexoDM_Top5Input)
+        {
+            UAInputAPI api = GetUApi();
+            if (!api)
+                return;
+            string top5Name = "UANexoDMTop5";
+            m_NexoDM_Top5Input = api.GetInputByName(top5Name);
+        }
+        if (!m_NexoDM_Top5Input)
+            return;
+        m_HUD.SetTop5Visible(m_NexoDM_Top5Input.LocalHold());
     }
 
     protected void NexoDM_ToggleScoreboard()
