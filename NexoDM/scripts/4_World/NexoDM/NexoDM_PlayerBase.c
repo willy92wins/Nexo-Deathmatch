@@ -1,10 +1,13 @@
 modded class PlayerBase
 {
     int m_GG_Role;
+    // Server-only cache: EEKilled after logout can run with GetIdentity() == null.
+    string m_GG_SteamId;
 
     void PlayerBase()
     {
         m_GG_Role = NexoDM_Role.NONE;
+        m_GG_SteamId = string.Empty;
 
         string roleSyncName = "m_GG_Role";
         // R2: EntityAI.RegisterNetSyncVariableInt(string,int,int) in scripts/3_game/entities/entityai.c:2865.
