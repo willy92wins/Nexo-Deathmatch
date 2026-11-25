@@ -15,11 +15,11 @@ class NexoDM_HUD : Managed
     protected float m_BarBaseH;
     protected bool m_CountdownActive;
 
-    // F5b groups (all names must exist in nexodm_hud.layout).
-    protected Widget m_SelfGroup;
-    protected TextWidget m_SelfRank;
-    protected TextWidget m_SelfPoints;
-    protected TextWidget m_SelfKD;
+    // F8b groups (all names must exist in nexodm_hud.layout).
+    protected Widget m_KdaGroup;
+    protected TextWidget m_KdaKills;
+    protected TextWidget m_KdaDeaths;
+    protected TextWidget m_KdaAssists;
     protected Widget m_ClockGroup;
     protected TextWidget m_ClockTime;
     protected TextWidget m_ClockGoal;
@@ -27,8 +27,17 @@ class NexoDM_HUD : Managed
     protected ImageWidget m_ClockMarkLead;
     protected float m_ClockTrackW;
     protected float m_ClockTrackH;
+    protected float m_ClockMarkY;
     protected Widget m_KillGroup;
-    protected ref array<TextWidget> m_KillLines;
+    protected ref array<Widget> m_KillRows;
+    protected ref array<TextWidget> m_KillKillers;
+    protected ref array<ItemPreviewWidget> m_KillPreviews;
+    protected ref array<ImageWidget> m_KillFallbacks;
+    protected ref array<TextWidget> m_KillWeaponTexts;
+    protected ref array<TextWidget> m_KillVictims;
+    protected ref map<string, EntityAI> m_KillIconCache;
+    protected ref array<string> m_KillIconOrder;
+    protected ref array<string> m_KillIconFailed;
     protected Widget m_TopGroup;
     protected ref array<Widget> m_TopRows;
     protected ref array<ImageWidget> m_TopRowBgs;
@@ -36,8 +45,20 @@ class NexoDM_HUD : Managed
     protected ref array<TextWidget> m_TopNames;
     protected ref array<TextWidget> m_TopKills;
     protected ref array<TextWidget> m_TopDeaths;
-    protected ref array<TextWidget> m_TopPoints;
+    protected ref array<TextWidget> m_TopAssists;
     protected bool m_Top5Held;
+    protected Widget m_RoundGroup;
+    protected TextWidget m_RoundTitle;
+    protected TextWidget m_RoundSub;
+    protected ref array<Widget> m_RoundRows;
+    protected ref array<ImageWidget> m_RoundRowBgs;
+    protected ref array<TextWidget> m_RoundRanks;
+    protected ref array<TextWidget> m_RoundNames;
+    protected ref array<TextWidget> m_RoundKills;
+    protected ref array<TextWidget> m_RoundDeaths;
+    protected ref array<TextWidget> m_RoundAssists;
+    protected int m_RoundSerialSeen;
+    protected float m_RoundHideAt;
     protected Widget m_GlobalGroup;
     protected ref array<Widget> m_GlobalRows;
     protected ref array<ImageWidget> m_GlobalRowBgs;
@@ -47,50 +68,20 @@ class NexoDM_HUD : Managed
     protected ref array<TextWidget> m_GlobalKills;
     protected int m_GlobalSerialSeen;
     protected float m_GlobalHideAt;
-    protected Widget m_WeaponGroup;
-    protected ItemPreviewWidget m_WeaponPreview;
-    protected TextWidget m_WeaponName;
-    protected TextWidget m_WeaponAmmo;
-    protected ImageWidget m_WeaponMeterFill;
-    protected float m_WeaponTrackW;
-    protected float m_WeaponTrackH;
-    protected EntityAI m_WeaponShown;
-    protected Widget m_VitalsGroup;
-    protected TextWidget m_HealthPct;
-    protected TextWidget m_BloodPct;
-    protected TextWidget m_WaterPct;
-    protected TextWidget m_FoodPct;
-    protected ImageWidget m_HealthTrendUp;
-    protected ImageWidget m_HealthTrendDown;
-    protected ImageWidget m_BloodTrendUp;
-    protected ImageWidget m_BloodTrendDown;
-    protected ImageWidget m_WaterTrendUp;
-    protected ImageWidget m_WaterTrendDown;
-    protected ImageWidget m_FoodTrendUp;
-    protected ImageWidget m_FoodTrendDown;
-    protected int m_PrevHealth;
-    protected int m_PrevBlood;
-    protected int m_PrevWater;
-    protected int m_PrevFood;
-    protected int m_TrendHealth;
-    protected int m_TrendBlood;
-    protected int m_TrendWater;
-    protected int m_TrendFood;
-    protected const int TREND_HOLD_MS = 2500;
-    protected int m_LastHealthChangeMs;
-    protected int m_LastBloodChangeMs;
-    protected int m_LastWaterChangeMs;
-    protected int m_LastFoodChangeMs;
-    protected int m_LastHealthValue = -1;
-    protected int m_LastBloodValue = -1;
-    protected int m_LastWaterValue = -1;
-    protected int m_LastFoodValue = -1;
-    protected float m_ClockMarkY;
+    protected bool m_GlobalPending;
     protected float m_HudTime;
     protected float m_RefreshAcc;
     protected int m_KillSeenCount;
     protected ref array<float> m_KillTimes;
-    protected bool m_F5bVisible;
+    protected bool m_HudVisible;
+
+    protected const int KILL_ROWS = 4;
+    protected const int TOP_ROWS = 5;
+    protected const int ROUND_ROWS = 26;
+    protected const int GLOBAL_ROWS = 10;
+    protected const int KILL_ICON_CACHE_MAX = 16;
+    protected const float END_PANEL_SECONDS = 10.0;
+    protected const float KILL_FEED_SECONDS = 6.0;
 
     void NexoDM_HUD()
     {
@@ -102,32 +93,40 @@ class NexoDM_HUD : Managed
         m_CountdownActive = false;
         m_ClockTrackW = 0;
         m_ClockTrackH = 0;
-        m_WeaponTrackW = 0;
-        m_WeaponTrackH = 0;
+        m_ClockMarkY = 0.48;
         m_Top5Held = false;
+        m_RoundSerialSeen = 0;
+        m_RoundHideAt = 0;
         m_GlobalSerialSeen = 0;
         m_GlobalHideAt = 0;
-        m_PrevHealth = -1;
-        m_PrevBlood = -1;
-        m_PrevWater = -1;
-        m_PrevFood = -1;
-        m_TrendHealth = 0;
-        m_TrendBlood = 0;
-        m_TrendWater = 0;
-        m_TrendFood = 0;
-        m_ClockMarkY = 0.48;
+        m_GlobalPending = false;
         m_HudTime = 0;
         m_RefreshAcc = 0;
         m_KillSeenCount = 0;
-        m_F5bVisible = false;
-        m_KillLines = new array<TextWidget>;
+        m_HudVisible = false;
+        m_KillRows = new array<Widget>;
+        m_KillKillers = new array<TextWidget>;
+        m_KillPreviews = new array<ItemPreviewWidget>;
+        m_KillFallbacks = new array<ImageWidget>;
+        m_KillWeaponTexts = new array<TextWidget>;
+        m_KillVictims = new array<TextWidget>;
+        m_KillIconCache = new map<string, EntityAI>;
+        m_KillIconOrder = new array<string>;
+        m_KillIconFailed = new array<string>;
         m_TopRows = new array<Widget>;
         m_TopRowBgs = new array<ImageWidget>;
         m_TopRanks = new array<TextWidget>;
         m_TopNames = new array<TextWidget>;
         m_TopKills = new array<TextWidget>;
         m_TopDeaths = new array<TextWidget>;
-        m_TopPoints = new array<TextWidget>;
+        m_TopAssists = new array<TextWidget>;
+        m_RoundRows = new array<Widget>;
+        m_RoundRowBgs = new array<ImageWidget>;
+        m_RoundRanks = new array<TextWidget>;
+        m_RoundNames = new array<TextWidget>;
+        m_RoundKills = new array<TextWidget>;
+        m_RoundDeaths = new array<TextWidget>;
+        m_RoundAssists = new array<TextWidget>;
         m_GlobalRows = new array<Widget>;
         m_GlobalRowBgs = new array<ImageWidget>;
         m_GlobalRanks = new array<TextWidget>;
@@ -148,7 +147,7 @@ class NexoDM_HUD : Managed
             return;
         CacheWidgets();
         HideCountdown();
-        HideF5bGroups();
+        HideHudGroups();
         s_Instance = this;
     }
 
@@ -171,10 +170,8 @@ class NexoDM_HUD : Managed
             m_CountdownActive = false;
             SetVanillaHudVisible(true);
         }
-        if (m_WeaponPreview)
-            m_WeaponPreview.SetItem(null);
-        m_WeaponPreview = null;
-        m_WeaponShown = null;
+        ClearKillPreviews();
+        ClearKillIconCache();
         if (m_Root)
             m_Root.Unlink();
         m_Root = null;
@@ -183,10 +180,10 @@ class NexoDM_HUD : Managed
         m_CountNumber = null;
         m_CountBar = null;
         m_RoundTag = null;
-        m_SelfGroup = null;
-        m_SelfRank = null;
-        m_SelfPoints = null;
-        m_SelfKD = null;
+        m_KdaGroup = null;
+        m_KdaKills = null;
+        m_KdaDeaths = null;
+        m_KdaAssists = null;
         m_ClockGroup = null;
         m_ClockTime = null;
         m_ClockGoal = null;
@@ -194,27 +191,37 @@ class NexoDM_HUD : Managed
         m_ClockMarkLead = null;
         m_KillGroup = null;
         m_TopGroup = null;
+        m_RoundGroup = null;
+        m_RoundTitle = null;
+        m_RoundSub = null;
         m_GlobalGroup = null;
-        m_WeaponGroup = null;
-        m_WeaponName = null;
-        m_WeaponAmmo = null;
-        m_WeaponMeterFill = null;
-        m_VitalsGroup = null;
-        m_HealthPct = null;
-        m_BloodPct = null;
-        m_WaterPct = null;
-        m_FoodPct = null;
-        m_HealthTrendUp = null;
-        m_HealthTrendDown = null;
-        m_BloodTrendUp = null;
-        m_BloodTrendDown = null;
-        m_WaterTrendUp = null;
-        m_WaterTrendDown = null;
-        m_FoodTrendUp = null;
-        m_FoodTrendDown = null;
-        if (m_KillLines)
-            m_KillLines.Clear();
-        m_KillLines = null;
+        if (m_KillRows)
+            m_KillRows.Clear();
+        m_KillRows = null;
+        if (m_KillKillers)
+            m_KillKillers.Clear();
+        m_KillKillers = null;
+        if (m_KillPreviews)
+            m_KillPreviews.Clear();
+        m_KillPreviews = null;
+        if (m_KillFallbacks)
+            m_KillFallbacks.Clear();
+        m_KillFallbacks = null;
+        if (m_KillWeaponTexts)
+            m_KillWeaponTexts.Clear();
+        m_KillWeaponTexts = null;
+        if (m_KillVictims)
+            m_KillVictims.Clear();
+        m_KillVictims = null;
+        if (m_KillIconCache)
+            m_KillIconCache.Clear();
+        m_KillIconCache = null;
+        if (m_KillIconOrder)
+            m_KillIconOrder.Clear();
+        m_KillIconOrder = null;
+        if (m_KillIconFailed)
+            m_KillIconFailed.Clear();
+        m_KillIconFailed = null;
         if (m_TopRows)
             m_TopRows.Clear();
         m_TopRows = null;
@@ -233,9 +240,30 @@ class NexoDM_HUD : Managed
         if (m_TopDeaths)
             m_TopDeaths.Clear();
         m_TopDeaths = null;
-        if (m_TopPoints)
-            m_TopPoints.Clear();
-        m_TopPoints = null;
+        if (m_TopAssists)
+            m_TopAssists.Clear();
+        m_TopAssists = null;
+        if (m_RoundRows)
+            m_RoundRows.Clear();
+        m_RoundRows = null;
+        if (m_RoundRowBgs)
+            m_RoundRowBgs.Clear();
+        m_RoundRowBgs = null;
+        if (m_RoundRanks)
+            m_RoundRanks.Clear();
+        m_RoundRanks = null;
+        if (m_RoundNames)
+            m_RoundNames.Clear();
+        m_RoundNames = null;
+        if (m_RoundKills)
+            m_RoundKills.Clear();
+        m_RoundKills = null;
+        if (m_RoundDeaths)
+            m_RoundDeaths.Clear();
+        m_RoundDeaths = null;
+        if (m_RoundAssists)
+            m_RoundAssists.Clear();
+        m_RoundAssists = null;
         if (m_GlobalRows)
             m_GlobalRows.Clear();
         m_GlobalRows = null;
@@ -258,17 +286,12 @@ class NexoDM_HUD : Managed
             m_KillTimes.Clear();
         m_KillTimes = null;
         m_Top5Held = false;
+        m_RoundSerialSeen = 0;
+        m_RoundHideAt = 0;
         m_GlobalSerialSeen = 0;
         m_GlobalHideAt = 0;
-        m_PrevHealth = -1;
-        m_PrevBlood = -1;
-        m_PrevWater = -1;
-        m_PrevFood = -1;
-        m_TrendHealth = 0;
-        m_TrendBlood = 0;
-        m_TrendWater = 0;
-        m_TrendFood = 0;
-        m_F5bVisible = false;
+        m_GlobalPending = false;
+        m_HudVisible = false;
         m_TimeLeft = -1;
         m_CountTotal = 0;
     }
@@ -285,7 +308,7 @@ class NexoDM_HUD : Managed
         m_Top5Held = held;
         if (!m_TopGroup)
             return;
-        if (held && CanShowF5b())
+        if (held && CanShowHud())
         {
             m_TopGroup.Show(true);
             UpdateTop5();
@@ -320,8 +343,8 @@ class NexoDM_HUD : Managed
     void OnUpdate(float timeslice)
     {
         UpdateCountdown(timeslice);
-        UpdateF5b(timeslice);
-        UpdateGlobalTop();
+        UpdateHud(timeslice);
+        UpdateEndPanels();
     }
 
     protected void UpdateCountdown(float timeslice)
@@ -349,6 +372,7 @@ class NexoDM_HUD : Managed
             m_TimeLeft = -1;
         }
     }
+
     protected void CacheWidgets()
     {
         if (!m_Root)
@@ -364,10 +388,19 @@ class NexoDM_HUD : Managed
             m_CountLabel.SetText(Widget.TranslateString("#STR_NEXODM_HUD_STARTING"));
         if (m_CountBar)
             m_CountBar.GetSize(m_BarBaseW, m_BarBaseH);
-        m_SelfGroup = m_Root.FindAnyWidget("SelfGroup");
-        m_SelfRank = TextWidget.Cast(m_Root.FindAnyWidget("SelfRank"));
-        m_SelfPoints = TextWidget.Cast(m_Root.FindAnyWidget("SelfPoints"));
-        m_SelfKD = TextWidget.Cast(m_Root.FindAnyWidget("SelfKD"));
+        m_KdaGroup = m_Root.FindAnyWidget("KdaGroup");
+        m_KdaKills = TextWidget.Cast(m_Root.FindAnyWidget("KdaKills"));
+        m_KdaDeaths = TextWidget.Cast(m_Root.FindAnyWidget("KdaDeaths"));
+        m_KdaAssists = TextWidget.Cast(m_Root.FindAnyWidget("KdaAssists"));
+        TextWidget kdaKillsLabel = TextWidget.Cast(m_Root.FindAnyWidget("KdaKillsLabel"));
+        if (kdaKillsLabel)
+            kdaKillsLabel.SetText(Widget.TranslateString("#STR_NEXODM_HUD_KILLS"));
+        TextWidget kdaDeathsLabel = TextWidget.Cast(m_Root.FindAnyWidget("KdaDeathsLabel"));
+        if (kdaDeathsLabel)
+            kdaDeathsLabel.SetText(Widget.TranslateString("#STR_NEXODM_HUD_DEATHS"));
+        TextWidget kdaAssistsLabel = TextWidget.Cast(m_Root.FindAnyWidget("KdaAssistsLabel"));
+        if (kdaAssistsLabel)
+            kdaAssistsLabel.SetText(Widget.TranslateString("#STR_NEXODM_HUD_ASSISTS"));
         m_ClockGroup = m_Root.FindAnyWidget("ClockGroup");
         m_ClockTime = TextWidget.Cast(m_Root.FindAnyWidget("ClockTime"));
         m_ClockGoal = TextWidget.Cast(m_Root.FindAnyWidget("ClockGoal"));
@@ -384,42 +417,32 @@ class NexoDM_HUD : Managed
             m_ClockMarkY = markY;
         }
         m_KillGroup = m_Root.FindAnyWidget("KillGroup");
+        int killIndex = 0;
+        for (killIndex = 0; killIndex < KILL_ROWS; killIndex = killIndex + 1)
+        {
+            string killSuffix = killIndex.ToString();
+            m_KillRows.Insert(m_Root.FindAnyWidget("KillRow" + killSuffix));
+            m_KillKillers.Insert(TextWidget.Cast(m_Root.FindAnyWidget("KillKiller" + killSuffix)));
+            m_KillPreviews.Insert(ItemPreviewWidget.Cast(m_Root.FindAnyWidget("KillPreview" + killSuffix)));
+            m_KillFallbacks.Insert(ImageWidget.Cast(m_Root.FindAnyWidget("KillFallback" + killSuffix)));
+            m_KillWeaponTexts.Insert(TextWidget.Cast(m_Root.FindAnyWidget("KillWeaponText" + killSuffix)));
+            m_KillVictims.Insert(TextWidget.Cast(m_Root.FindAnyWidget("KillVictim" + killSuffix)));
+        }
         m_TopGroup = m_Root.FindAnyWidget("TopGroup");
         TextWidget topTitle = TextWidget.Cast(m_Root.FindAnyWidget("TopTitle"));
         if (topTitle)
             topTitle.SetText(Widget.TranslateString("#STR_NEXODM_HUD_TOP5"));
-        m_WeaponGroup = m_Root.FindAnyWidget("WeaponGroup");
-        m_WeaponPreview = ItemPreviewWidget.Cast(m_Root.FindAnyWidget("WeaponPreview"));
-        m_WeaponName = TextWidget.Cast(m_Root.FindAnyWidget("WeaponName"));
-        m_WeaponAmmo = TextWidget.Cast(m_Root.FindAnyWidget("WeaponAmmo"));
-        TextWidget magLabel = TextWidget.Cast(m_Root.FindAnyWidget("WeaponMagLabel"));
-        if (magLabel)
-            magLabel.SetText(Widget.TranslateString("#STR_NEXODM_HUD_MAGAZINE"));
-        m_WeaponMeterFill = ImageWidget.Cast(m_Root.FindAnyWidget("WeaponMeterFill"));
-        Widget weaponTrack = m_Root.FindAnyWidget("WeaponMeterTrack");
-        if (weaponTrack)
-            weaponTrack.GetSize(m_WeaponTrackW, m_WeaponTrackH);
-        m_VitalsGroup = m_Root.FindAnyWidget("VitalsGroup");
-        m_HealthPct = TextWidget.Cast(m_Root.FindAnyWidget("HealthPct"));
-        m_BloodPct = TextWidget.Cast(m_Root.FindAnyWidget("BloodPct"));
-        m_WaterPct = TextWidget.Cast(m_Root.FindAnyWidget("WaterPct"));
-        m_FoodPct = TextWidget.Cast(m_Root.FindAnyWidget("FoodPct"));
-        m_HealthTrendUp = ImageWidget.Cast(m_Root.FindAnyWidget("HealthTrendUp"));
-        m_HealthTrendDown = ImageWidget.Cast(m_Root.FindAnyWidget("HealthTrendDown"));
-        m_BloodTrendUp = ImageWidget.Cast(m_Root.FindAnyWidget("BloodTrendUp"));
-        m_BloodTrendDown = ImageWidget.Cast(m_Root.FindAnyWidget("BloodTrendDown"));
-        m_WaterTrendUp = ImageWidget.Cast(m_Root.FindAnyWidget("WaterTrendUp"));
-        m_WaterTrendDown = ImageWidget.Cast(m_Root.FindAnyWidget("WaterTrendDown"));
-        m_FoodTrendUp = ImageWidget.Cast(m_Root.FindAnyWidget("FoodTrendUp"));
-        m_FoodTrendDown = ImageWidget.Cast(m_Root.FindAnyWidget("FoodTrendDown"));
-        int lineIndex = 0;
-        for (lineIndex = 0; lineIndex < 4; lineIndex = lineIndex + 1)
-        {
-            string lineName = "KillLine" + lineIndex.ToString();
-            m_KillLines.Insert(TextWidget.Cast(m_Root.FindAnyWidget(lineName)));
-        }
+        TextWidget topKillsHead = TextWidget.Cast(m_Root.FindAnyWidget("TopKillsHead"));
+        if (topKillsHead)
+            topKillsHead.SetText(Widget.TranslateString("#STR_NEXODM_HUD_KILLS"));
+        TextWidget topDeathsHead = TextWidget.Cast(m_Root.FindAnyWidget("TopDeathsHead"));
+        if (topDeathsHead)
+            topDeathsHead.SetText(Widget.TranslateString("#STR_NEXODM_HUD_DEATHS"));
+        TextWidget topAssistsHead = TextWidget.Cast(m_Root.FindAnyWidget("TopAssistsHead"));
+        if (topAssistsHead)
+            topAssistsHead.SetText(Widget.TranslateString("#STR_NEXODM_HUD_ASSISTS"));
         int rowIndex = 0;
-        for (rowIndex = 0; rowIndex < 5; rowIndex = rowIndex + 1)
+        for (rowIndex = 0; rowIndex < TOP_ROWS; rowIndex = rowIndex + 1)
         {
             string suffix = rowIndex.ToString();
             m_TopRows.Insert(m_Root.FindAnyWidget("TopRow" + suffix));
@@ -428,14 +451,49 @@ class NexoDM_HUD : Managed
             m_TopNames.Insert(TextWidget.Cast(m_Root.FindAnyWidget("TopName" + suffix)));
             m_TopKills.Insert(TextWidget.Cast(m_Root.FindAnyWidget("TopKills" + suffix)));
             m_TopDeaths.Insert(TextWidget.Cast(m_Root.FindAnyWidget("TopDeaths" + suffix)));
-            m_TopPoints.Insert(TextWidget.Cast(m_Root.FindAnyWidget("TopPoints" + suffix)));
+            m_TopAssists.Insert(TextWidget.Cast(m_Root.FindAnyWidget("TopAssists" + suffix)));
         }
+        m_RoundGroup = m_Root.FindAnyWidget("RoundGroup");
+        m_RoundTitle = TextWidget.Cast(m_Root.FindAnyWidget("RoundTitle"));
+        m_RoundSub = TextWidget.Cast(m_Root.FindAnyWidget("RoundSub"));
+        TextWidget roundHeadTitle = TextWidget.Cast(m_Root.FindAnyWidget("RoundHeadTitle"));
+        if (roundHeadTitle)
+            roundHeadTitle.SetText(Widget.TranslateString("#STR_NEXODM_SCOREBOARD_TITLE"));
+        TextWidget roundKillsHead = TextWidget.Cast(m_Root.FindAnyWidget("RoundKillsHead"));
+        if (roundKillsHead)
+            roundKillsHead.SetText(Widget.TranslateString("#STR_NEXODM_HUD_KILLS"));
+        TextWidget roundDeathsHead = TextWidget.Cast(m_Root.FindAnyWidget("RoundDeathsHead"));
+        if (roundDeathsHead)
+            roundDeathsHead.SetText(Widget.TranslateString("#STR_NEXODM_HUD_DEATHS"));
+        TextWidget roundAssistsHead = TextWidget.Cast(m_Root.FindAnyWidget("RoundAssistsHead"));
+        if (roundAssistsHead)
+            roundAssistsHead.SetText(Widget.TranslateString("#STR_NEXODM_HUD_ASSISTS"));
+        int roundIndex = 0;
+        for (roundIndex = 0; roundIndex < ROUND_ROWS; roundIndex = roundIndex + 1)
+        {
+            string roundSuffix = roundIndex.ToString();
+            m_RoundRows.Insert(m_Root.FindAnyWidget("RoundRow" + roundSuffix));
+            m_RoundRowBgs.Insert(ImageWidget.Cast(m_Root.FindAnyWidget("RoundRowBg" + roundSuffix)));
+            m_RoundRanks.Insert(TextWidget.Cast(m_Root.FindAnyWidget("RoundRank" + roundSuffix)));
+            m_RoundNames.Insert(TextWidget.Cast(m_Root.FindAnyWidget("RoundName" + roundSuffix)));
+            m_RoundKills.Insert(TextWidget.Cast(m_Root.FindAnyWidget("RoundKills" + roundSuffix)));
+            m_RoundDeaths.Insert(TextWidget.Cast(m_Root.FindAnyWidget("RoundDeaths" + roundSuffix)));
+            m_RoundAssists.Insert(TextWidget.Cast(m_Root.FindAnyWidget("RoundAssists" + roundSuffix)));
+        }
+        if (m_RoundGroup)
+            m_RoundGroup.Show(false);
         m_GlobalGroup = m_Root.FindAnyWidget("GlobalTopGroup");
         TextWidget globalTitle = TextWidget.Cast(m_Root.FindAnyWidget("GlobalTitle"));
         if (globalTitle)
             globalTitle.SetText(Widget.TranslateString("#STR_NEXODM_HUD_GLOBAL_TOP"));
+        TextWidget globalPointsHead = TextWidget.Cast(m_Root.FindAnyWidget("GlobalPointsHead"));
+        if (globalPointsHead)
+            globalPointsHead.SetText(Widget.TranslateString("#STR_NEXODM_HUD_POINTS"));
+        TextWidget globalKillsHead = TextWidget.Cast(m_Root.FindAnyWidget("GlobalKillsHead"));
+        if (globalKillsHead)
+            globalKillsHead.SetText(Widget.TranslateString("#STR_NEXODM_HUD_KILLS"));
         int globalIndex = 0;
-        for (globalIndex = 0; globalIndex < 10; globalIndex = globalIndex + 1)
+        for (globalIndex = 0; globalIndex < GLOBAL_ROWS; globalIndex = globalIndex + 1)
         {
             string globalSuffix = globalIndex.ToString();
             m_GlobalRows.Insert(m_Root.FindAnyWidget("GlobalRow" + globalSuffix));
@@ -449,36 +507,22 @@ class NexoDM_HUD : Managed
             m_GlobalGroup.Show(false);
     }
 
-    protected void HideF5bGroups()
+    protected void HideHudGroups()
     {
-        if (m_SelfGroup)
-            m_SelfGroup.Show(false);
+        if (m_KdaGroup)
+            m_KdaGroup.Show(false);
         if (m_ClockGroup)
             m_ClockGroup.Show(false);
         if (m_KillGroup)
             m_KillGroup.Show(false);
         if (m_TopGroup)
             m_TopGroup.Show(false);
-        if (m_WeaponGroup)
-            m_WeaponGroup.Show(false);
-        if (m_VitalsGroup)
-            m_VitalsGroup.Show(false);
-        if (m_WeaponPreview)
-            m_WeaponPreview.SetItem(null);
-        m_WeaponShown = null;
+        ClearKillPreviews();
         m_Top5Held = false;
-        m_PrevHealth = -1;
-        m_PrevBlood = -1;
-        m_PrevWater = -1;
-        m_PrevFood = -1;
-        m_TrendHealth = 0;
-        m_TrendBlood = 0;
-        m_TrendWater = 0;
-        m_TrendFood = 0;
-        m_F5bVisible = false;
+        m_HudVisible = false;
     }
 
-    protected bool CanShowF5b()
+    protected bool CanShowHud()
     {
         DayZGame game = GetGame();
         if (!game)
@@ -515,50 +559,42 @@ class NexoDM_HUD : Managed
         return true;
     }
 
-    protected void UpdateF5b(float timeslice)
+    protected void UpdateHud(float timeslice)
     {
         m_HudTime = m_HudTime + timeslice;
-        if (!CanShowF5b())
+        if (!CanShowHud())
         {
-            if (m_F5bVisible)
-                HideF5bGroups();
+            if (m_HudVisible)
+                HideHudGroups();
             return;
         }
         m_RefreshAcc = m_RefreshAcc + timeslice;
         if (m_RefreshAcc < 0.25)
             return;
         m_RefreshAcc = 0;
-        m_F5bVisible = true;
-        if (m_SelfGroup)
-            m_SelfGroup.Show(true);
+        m_HudVisible = true;
+        if (m_KdaGroup)
+            m_KdaGroup.Show(true);
         if (m_ClockGroup)
             m_ClockGroup.Show(true);
-        if (m_VitalsGroup)
-            m_VitalsGroup.Show(true);
-        UpdateSelfAndClock();
-        UpdateVitals();
-        UpdateWeapon();
+        UpdateKdaAndClock();
         UpdateKillfeed();
         UpdateTop5();
     }
-    protected void UpdateSelfAndClock()
+
+    protected void UpdateKdaAndClock()
     {
         NexoDM_HudData data = NexoDM_HudData.Get();
         if (!data)
             return;
-        if (m_SelfRank && data.HasSelf())
+        if (data.HasSelf())
         {
-            string rankText = "#";
-            if (data.GetRank() > 0)
-                rankText = "#" + data.GetRank().ToString();
-            m_SelfRank.SetText(rankText);
-        }
-        if (m_SelfPoints && data.HasSelf())
-            m_SelfPoints.SetText(data.GetPoints().ToString());
-        if (m_SelfKD && data.HasSelf())
-        {
-            string kdText = data.GetKills().ToString() + " / " + data.GetDeaths().ToString();
-            m_SelfKD.SetText(kdText);
+            if (m_KdaKills)
+                m_KdaKills.SetText(data.GetKills().ToString());
+            if (m_KdaDeaths)
+                m_KdaDeaths.SetText(data.GetDeaths().ToString());
+            if (m_KdaAssists)
+                m_KdaAssists.SetText(data.GetAssists().ToString());
         }
         int secondsLeft = data.GetRoundSecondsLeft();
         int minutes = secondsLeft / 60;
@@ -623,185 +659,137 @@ class NexoDM_HUD : Managed
         }
     }
 
-    protected void SetPct(TextWidget widget, int value)
+    protected void ClearKillPreviews()
     {
-        if (!widget)
+        if (!m_KillPreviews)
             return;
-        widget.SetText(value.ToString() + "%");
-        if (value < 25)
-            widget.SetColor(ARGB(255, 220, 0, 0));
-        else if (value < 50)
-            widget.SetColor(ARGB(255, 220, 220, 0));
-        else
-            widget.SetColor(ARGB(255, 220, 220, 220));
+        int index = 0;
+        for (index = 0; index < m_KillPreviews.Count(); index = index + 1)
+        {
+            ItemPreviewWidget preview = m_KillPreviews.Get(index);
+            if (preview)
+                preview.SetItem(null);
+        }
     }
 
-    protected int NextTrend(int storedTrend, int previous, int current)
+    protected void ClearKillIconCache()
     {
-        if (previous < 0)
-            return 0;
-        if (current > previous)
-            return 1;
-        if (current < previous)
-            return -1;
-        return storedTrend;
+        DayZGame game = GetGame();
+        if (m_KillIconOrder && m_KillIconCache)
+        {
+            int index = 0;
+            for (index = 0; index < m_KillIconOrder.Count(); index = index + 1)
+            {
+                string className = m_KillIconOrder.Get(index);
+                EntityAI entity = null;
+                if (m_KillIconCache.Contains(className))
+                    entity = m_KillIconCache.Get(className);
+                if (entity && game)
+                    game.ObjectDelete(entity);
+            }
+        }
+        if (m_KillIconCache)
+            m_KillIconCache.Clear();
+        if (m_KillIconOrder)
+            m_KillIconOrder.Clear();
+        if (m_KillIconFailed)
+            m_KillIconFailed.Clear();
     }
 
-    protected void ApplyTrend(ImageWidget upWidget, ImageWidget downWidget, int trend)
+    protected void EvictKillIcons()
     {
-        if (upWidget)
-            upWidget.Show(trend > 0);
-        if (downWidget)
-            downWidget.Show(trend < 0);
+        DayZGame game = GetGame();
+        while (m_KillIconOrder && m_KillIconOrder.Count() > KILL_ICON_CACHE_MAX)
+        {
+            string oldest = m_KillIconOrder.Get(0);
+            m_KillIconOrder.Remove(0);
+            EntityAI entity = null;
+            if (m_KillIconCache && m_KillIconCache.Contains(oldest))
+                entity = m_KillIconCache.Get(oldest);
+            if (m_KillIconCache)
+                m_KillIconCache.Remove(oldest);
+            if (!entity)
+                continue;
+            if (m_KillPreviews)
+            {
+                int index = 0;
+                for (index = 0; index < m_KillPreviews.Count(); index = index + 1)
+                {
+                    ItemPreviewWidget preview = m_KillPreviews.Get(index);
+                    if (preview && preview.GetItem() == entity)
+                        preview.SetItem(null);
+                }
+            }
+            if (game)
+                game.ObjectDelete(entity);
+        }
     }
 
-    protected void UpdateVitals()
+    // Local preview entity per weapon classname (F8-weapon-icon.md). Only Weapon_Base
+    // classes spawn; anything else returns null and the caller uses the fallback.
+    protected EntityAI GetKillIcon(string weaponClass)
     {
-        NexoDM_HudData data = NexoDM_HudData.Get();
-        if (!data)
-            return;
-        if (!data.HasVitals())
-            return;
-        int health = data.GetHealthPercent();
-        int blood = data.GetBloodPercent();
-        int water = data.GetWaterPercent();
-        int food = data.GetFoodPercent();
-        SetPct(m_HealthPct, health);
-        SetPct(m_BloodPct, blood);
-        SetPct(m_WaterPct, water);
-        SetPct(m_FoodPct, food);
-        m_TrendHealth = NextTrend(m_TrendHealth, m_PrevHealth, health);
-        m_TrendBlood = NextTrend(m_TrendBlood, m_PrevBlood, blood);
-        m_TrendWater = NextTrend(m_TrendWater, m_PrevWater, water);
-        m_TrendFood = NextTrend(m_TrendFood, m_PrevFood, food);
-        if (m_PrevHealth < 0 || health != m_PrevHealth)
-            m_PrevHealth = health;
-        if (m_PrevBlood < 0 || blood != m_PrevBlood)
-            m_PrevBlood = blood;
-        if (m_PrevWater < 0 || water != m_PrevWater)
-            m_PrevWater = water;
-        if (m_PrevFood < 0 || food != m_PrevFood)
-            m_PrevFood = food;
-        // F5 r2: an arrow stays lit only while its vital keeps changing. Vitals arrive at most once per
-        // second, so no change for TREND_HOLD_MS means the value is stable and the arrow goes off.
-        // R2: CGame.GetTime() in scripts/3_game/global/game.c:1535.
-        int nowMs = GetGame().GetTime();
-        if (m_PrevHealth != m_LastHealthValue)
-            m_LastHealthChangeMs = nowMs;
-        if (m_PrevBlood != m_LastBloodValue)
-            m_LastBloodChangeMs = nowMs;
-        if (m_PrevWater != m_LastWaterValue)
-            m_LastWaterChangeMs = nowMs;
-        if (m_PrevFood != m_LastFoodValue)
-            m_LastFoodChangeMs = nowMs;
-        m_LastHealthValue = m_PrevHealth;
-        m_LastBloodValue = m_PrevBlood;
-        m_LastWaterValue = m_PrevWater;
-        m_LastFoodValue = m_PrevFood;
-        if (nowMs - m_LastHealthChangeMs > TREND_HOLD_MS)
-            m_TrendHealth = 0;
-        if (nowMs - m_LastBloodChangeMs > TREND_HOLD_MS)
-            m_TrendBlood = 0;
-        if (nowMs - m_LastWaterChangeMs > TREND_HOLD_MS)
-            m_TrendWater = 0;
-        if (nowMs - m_LastFoodChangeMs > TREND_HOLD_MS)
-            m_TrendFood = 0;
-        ApplyTrend(m_HealthTrendUp, m_HealthTrendDown, m_TrendHealth);
-        ApplyTrend(m_BloodTrendUp, m_BloodTrendDown, m_TrendBlood);
-        ApplyTrend(m_WaterTrendUp, m_WaterTrendDown, m_TrendWater);
-        ApplyTrend(m_FoodTrendUp, m_FoodTrendDown, m_TrendFood);
+        if (weaponClass == string.Empty)
+            return null;
+        if (!m_KillIconCache || !m_KillIconOrder || !m_KillIconFailed)
+            return null;
+        if (m_KillIconFailed.Find(weaponClass) >= 0)
+            return null;
+        if (m_KillIconCache.Contains(weaponClass))
+        {
+            EntityAI cached = m_KillIconCache.Get(weaponClass);
+            if (cached)
+            {
+                int orderIndex = m_KillIconOrder.Find(weaponClass);
+                if (orderIndex >= 0)
+                    m_KillIconOrder.Remove(orderIndex);
+                m_KillIconOrder.Insert(weaponClass);
+                return cached;
+            }
+            m_KillIconCache.Remove(weaponClass);
+        }
+        DayZGame game = GetGame();
+        if (!game)
+            return null;
+        if (!game.IsKindOf(weaponClass, "Weapon_Base"))
+            return null;
+        if (!game.ConfigIsExisting("CfgWeapons " + weaponClass))
+        {
+            m_KillIconFailed.Insert(weaponClass);
+            return null;
+        }
+        EntityAI created = EntityAI.Cast(game.CreateObjectEx(weaponClass, "0 0 0", ECE_LOCAL | ECE_CREATEPHYSICS | ECE_TRACE));
+        if (!created)
+        {
+            m_KillIconFailed.Insert(weaponClass);
+            return null;
+        }
+        dBodyDestroy(created);
+        created.DisableSimulation(true);
+        created.SetAllowDamage(false);
+        m_KillIconCache.Set(weaponClass, created);
+        m_KillIconOrder.Insert(weaponClass);
+        EvictKillIcons();
+        return created;
     }
 
-    protected void UpdateWeapon()
+    protected string GetKillWeaponName(string weaponClass)
     {
         DayZGame game = GetGame();
         if (!game)
-            return;
-        PlayerBase player = PlayerBase.Cast(game.GetPlayer());
-        if (!player)
-        {
-            if (m_WeaponPreview)
-                m_WeaponPreview.SetItem(null);
-            m_WeaponShown = null;
-            if (m_WeaponGroup)
-                m_WeaponGroup.Show(false);
-            return;
-        }
-        EntityAI inHands = player.GetEntityInHands();
-        Weapon_Base weapon = Weapon_Base.Cast(inHands);
-        if (!weapon)
-        {
-            if (m_WeaponPreview)
-                m_WeaponPreview.SetItem(null);
-            m_WeaponShown = null;
-            if (m_WeaponGroup)
-                m_WeaponGroup.Show(false);
-            return;
-        }
-        if (m_WeaponGroup)
-            m_WeaponGroup.Show(true);
-        if (m_WeaponPreview && m_WeaponShown != inHands)
-        {
-            m_WeaponPreview.SetItem(weapon);
-            m_WeaponPreview.SetView(weapon.GetViewIndex());
-            m_WeaponShown = inHands;
-        }
-        if (m_WeaponName)
-            m_WeaponName.SetText(weapon.GetDisplayName());
-        int current = 0;
-        int maximum = 0;
-        bool magCounted = false;
-        int muzzleCount = weapon.GetMuzzleCount();
-        if (muzzleCount < 1)
-            muzzleCount = 1;
-        int muzzleIndex = 0;
-        for (muzzleIndex = 0; muzzleIndex < muzzleCount; muzzleIndex = muzzleIndex + 1)
-        {
-            if (weapon.HasInternalMagazine(muzzleIndex))
-            {
-                current = current + weapon.GetTotalCartridgeCount(muzzleIndex);
-                maximum = maximum + weapon.GetTotalMaxCartridgeCount(muzzleIndex);
-                continue;
-            }
-            Magazine mag = weapon.GetMagazine(muzzleIndex);
-            if (mag)
-            {
-                if (!magCounted)
-                {
-                    current = current + mag.GetAmmoCount();
-                    maximum = maximum + game.ConfigGetInt("CfgMagazines " + mag.GetType() + " count");
-                    magCounted = true;
-                }
-                maximum = maximum + 1;
-                if (!weapon.IsChamberEmpty(muzzleIndex) && !weapon.IsChamberFiredOut(muzzleIndex) && !weapon.IsChamberJammed(muzzleIndex))
-                    current = current + 1;
-            }
-            else
-            {
-                maximum = maximum + 1;
-                if (!weapon.IsChamberEmpty(muzzleIndex) && !weapon.IsChamberFiredOut(muzzleIndex) && !weapon.IsChamberJammed(muzzleIndex))
-                    current = current + 1;
-            }
-        }
-        if (m_WeaponAmmo)
-        {
-            string ammoText = current.ToString();
-            if (maximum > 0)
-                ammoText = ammoText + " / " + maximum.ToString();
-            m_WeaponAmmo.SetText(ammoText);
-        }
-        if (m_WeaponMeterFill && m_WeaponTrackW > 0)
-        {
-            float fracAmmo = 0;
-            if (maximum > 0)
-                fracAmmo = (current * 1.0) / maximum;
-            if (fracAmmo < 0)
-                fracAmmo = 0;
-            if (fracAmmo > 1)
-                fracAmmo = 1;
-            m_WeaponMeterFill.SetSize(m_WeaponTrackW * fracAmmo, m_WeaponTrackH);
-        }
+            return weaponClass;
+        string displayName = "";
+        if (game.ConfigGetText("CfgWeapons " + weaponClass + " displayName", displayName) && displayName != string.Empty)
+            return displayName;
+        displayName = "";
+        if (game.ConfigGetText("CfgVehicles " + weaponClass + " displayName", displayName) && displayName != string.Empty)
+            return displayName;
+        displayName = "";
+        if (game.ConfigGetText("CfgMagazines " + weaponClass + " displayName", displayName) && displayName != string.Empty)
+            return displayName;
+        return weaponClass;
     }
+
     protected void UpdateKillfeed()
     {
         NexoDM_HudData data = NexoDM_HudData.Get();
@@ -825,41 +813,115 @@ class NexoDM_HUD : Managed
             else
                 m_KillGroup.Show(true);
         }
+        DayZGame game = GetGame();
         int slot = 0;
-        for (slot = 0; slot < 4; slot = slot + 1)
+        for (slot = 0; slot < KILL_ROWS; slot = slot + 1)
         {
-            TextWidget line = null;
-            if (slot < m_KillLines.Count())
-                line = m_KillLines.Get(slot);
-            if (!line)
-                continue;
+            Widget row = null;
+            if (slot < m_KillRows.Count())
+                row = m_KillRows.Get(slot);
+            ItemPreviewWidget preview = null;
+            if (slot < m_KillPreviews.Count())
+                preview = m_KillPreviews.Get(slot);
+            ImageWidget fallback = null;
+            if (slot < m_KillFallbacks.Count())
+                fallback = m_KillFallbacks.Get(slot);
+            TextWidget weaponText = null;
+            if (slot < m_KillWeaponTexts.Count())
+                weaponText = m_KillWeaponTexts.Get(slot);
             int feedIndex = total - 1 - slot;
+            bool showRow = true;
             if (feedIndex < 0)
-            {
-                line.SetText("");
-                line.Show(false);
-                continue;
-            }
+                showRow = false;
             float born = 0;
-            if (feedIndex < m_KillTimes.Count())
+            if (showRow && feedIndex < m_KillTimes.Count())
                 born = m_KillTimes.Get(feedIndex);
-            float age = m_HudTime - born;
-            if (age > 6.0)
+            if (showRow && m_HudTime - born > KILL_FEED_SECONDS)
+                showRow = false;
+            if (!showRow)
             {
-                line.SetText("");
-                line.Show(false);
+                if (row)
+                    row.Show(false);
+                if (preview)
+                    preview.SetItem(null);
                 continue;
             }
-            string killer = data.GetKillKiller(feedIndex);
-            string victim = data.GetKillVictim(feedIndex);
+            if (row)
+                row.Show(true);
+            TextWidget killerWidget = null;
+            if (slot < m_KillKillers.Count())
+                killerWidget = m_KillKillers.Get(slot);
+            if (killerWidget)
+                killerWidget.SetText(data.GetKillKiller(feedIndex));
+            TextWidget victimWidget = null;
+            if (slot < m_KillVictims.Count())
+                victimWidget = m_KillVictims.Get(slot);
+            if (victimWidget)
+                victimWidget.SetText(data.GetKillVictim(feedIndex));
             string weaponClass = data.GetKillWeapon(feedIndex);
-            string text = victim;
-            if (killer != string.Empty && weaponClass != string.Empty)
-                text = killer + "  " + weaponClass + "  " + victim;
-            else if (killer != string.Empty)
-                text = killer + "  " + victim;
-            line.SetText(text);
-            line.Show(true);
+            if (weaponClass == string.Empty)
+            {
+                if (preview)
+                {
+                    preview.SetItem(null);
+                    preview.Show(false);
+                }
+                if (fallback)
+                    fallback.Show(false);
+                if (weaponText)
+                    weaponText.Show(false);
+                continue;
+            }
+            EntityAI icon = GetKillIcon(weaponClass);
+            if (icon)
+            {
+                if (preview)
+                {
+                    if (preview.GetItem() != icon)
+                    {
+                        preview.SetItem(icon);
+                        preview.SetModelOrientation("0 0 0");
+                        preview.SetView(icon.GetViewIndex());
+                    }
+                    preview.Show(true);
+                }
+                if (fallback)
+                    fallback.Show(false);
+                if (weaponText)
+                    weaponText.Show(false);
+                continue;
+            }
+            if (preview)
+            {
+                preview.SetItem(null);
+                preview.Show(false);
+            }
+            bool isWeapon = false;
+            if (game && game.IsKindOf(weaponClass, "Weapon_Base"))
+                isWeapon = true;
+            if (isWeapon)
+            {
+                if (fallback)
+                {
+                    string category = "shoulderright";
+                    if (game.IsKindOf(weaponClass, "Pistol_Base"))
+                        category = "pistol";
+                    fallback.LoadImageFile(0, "set:dayz_inventory image:" + category);
+                    fallback.Show(true);
+                }
+                if (weaponText)
+                    weaponText.Show(false);
+            }
+            else
+            {
+                if (fallback)
+                    fallback.Show(false);
+                if (weaponText)
+                {
+                    weaponText.SetText(GetKillWeaponName(weaponClass));
+                    weaponText.Show(true);
+                }
+            }
         }
     }
 
@@ -886,7 +948,7 @@ class NexoDM_HUD : Managed
                 myName = player.GetIdentity().GetName();
         }
         int rowIndex = 0;
-        for (rowIndex = 0; rowIndex < 5; rowIndex = rowIndex + 1)
+        for (rowIndex = 0; rowIndex < TOP_ROWS; rowIndex = rowIndex + 1)
         {
             Widget row = null;
             if (rowIndex < m_TopRows.Count())
@@ -919,7 +981,7 @@ class NexoDM_HUD : Managed
                     bg.SetColor(ARGB(0, 0, 0, 0));
             }
             int textColor = ARGB(255, 255, 255, 255);
-            int dimColor = ARGB(255, 200, 200, 200);
+            int dimColor = ARGB(200, 255, 255, 255);
             if (isMe)
             {
                 textColor = ARGB(255, 255, 0, 0);
@@ -957,55 +1019,195 @@ class NexoDM_HUD : Managed
                 deathsWidget.SetText(data.GetTopDeaths(rowIndex).ToString());
                 deathsWidget.SetColor(textColor);
             }
-            TextWidget pointsWidget = null;
-            if (rowIndex < m_TopPoints.Count())
-                pointsWidget = m_TopPoints.Get(rowIndex);
-            if (pointsWidget)
+            TextWidget assistsWidget = null;
+            if (rowIndex < m_TopAssists.Count())
+                assistsWidget = m_TopAssists.Get(rowIndex);
+            if (assistsWidget)
             {
-                pointsWidget.SetText(data.GetTopPoints(rowIndex).ToString());
-                pointsWidget.SetColor(textColor);
+                assistsWidget.SetText(data.GetTopAssists(rowIndex).ToString());
+                assistsWidget.SetColor(textColor);
             }
         }
     }
 
-    protected void UpdateGlobalTop()
+    // End of round, in order: round classification (10 s), then global top 10 (10 s).
+    // The global window only starts when the panel first shows, so its 10 s are whole.
+    protected void UpdateEndPanels()
     {
-        if (!m_GlobalGroup)
+        if (!m_RoundGroup || !m_GlobalGroup)
             return;
-
         NexoDM_HudData data = NexoDM_HudData.Get();
-        int serial = 0;
-        if (data)
-            serial = data.GetGlobalSerial();
-
-        if (serial != m_GlobalSerialSeen)
-        {
-            m_GlobalSerialSeen = serial;
-            if (serial > 0)
-                m_GlobalHideAt = m_HudTime + NexoDM_Constants.GLOBAL_TOP_SHOW_SEC;
-        }
-
-        if (data && data.IsRoundActive())
-            m_GlobalHideAt = m_HudTime;
-
-        bool showPanel = false;
-        if (serial > 0 && m_HudTime < m_GlobalHideAt)
-            showPanel = true;
+        bool blocked = false;
         if (m_CountdownActive)
-            showPanel = false;
+            blocked = true;
         DayZGame game = GetGame();
         if (game)
         {
             UIManager ui = game.GetUIManager();
             if (ui && ui.GetMenu())
-                showPanel = false;
+                blocked = true;
         }
-        m_GlobalGroup.Show(showPanel);
-        if (!showPanel || !data)
-            return;
+        int roundSerial = 0;
+        if (data)
+            roundSerial = data.GetRoundResultSerial();
+        if (roundSerial != m_RoundSerialSeen)
+        {
+            m_RoundSerialSeen = roundSerial;
+            if (roundSerial > 0)
+                m_RoundHideAt = m_HudTime + END_PANEL_SECONDS;
+        }
+        if (data && data.IsRoundActive())
+            m_RoundHideAt = m_HudTime;
+        bool showRound = false;
+        if (roundSerial > 0 && m_HudTime < m_RoundHideAt && !blocked)
+            showRound = true;
+        m_RoundGroup.Show(showRound);
+        if (showRound && data)
+            FillRoundPanel(data);
+        int globalSerial = 0;
+        if (data)
+            globalSerial = data.GetGlobalSerial();
+        if (globalSerial != m_GlobalSerialSeen)
+        {
+            m_GlobalSerialSeen = globalSerial;
+            if (globalSerial > 0)
+            {
+                m_GlobalPending = true;
+                m_GlobalHideAt = 0;
+            }
+        }
+        if (data && data.IsRoundActive())
+        {
+            m_GlobalHideAt = m_HudTime;
+            m_GlobalPending = false;
+        }
+        bool showGlobal = false;
+        if (m_GlobalPending && !showRound && !blocked)
+        {
+            if (m_GlobalHideAt <= 0)
+                m_GlobalHideAt = m_HudTime + NexoDM_Constants.GLOBAL_TOP_SHOW_SEC;
+            if (m_HudTime < m_GlobalHideAt)
+                showGlobal = true;
+            else
+            {
+                m_GlobalPending = false;
+                m_GlobalHideAt = 0;
+            }
+        }
+        m_GlobalGroup.Show(showGlobal);
+        if (showGlobal && data)
+            FillGlobalPanel(data);
+    }
 
+    protected void FillRoundPanel(NexoDM_HudData data)
+    {
+        if (m_RoundTitle)
+        {
+            string winner = data.GetRoundResultWinner();
+            string titleText = "";
+            if (winner != string.Empty)
+                titleText = Widget.TranslateString("#STR_NEXODM_HUD_END_TITLE") + " " + winner;
+            else
+                titleText = Widget.TranslateString("#STR_NEXODM_HUD_END_NO_WINNER");
+            m_RoundTitle.SetText(titleText);
+        }
+        if (m_RoundSub)
+        {
+            string mapName = data.GetRoundResultMap();
+            int killsToWin = data.GetRoundResultKillsToWin();
+            string subText = "";
+            if (mapName != string.Empty && killsToWin > 0)
+                subText = mapName + " · " + killsToWin.ToString() + " " + Widget.TranslateString("#STR_NEXODM_HUD_KILLS_LABEL");
+            else if (mapName != string.Empty)
+                subText = mapName;
+            else if (killsToWin > 0)
+                subText = killsToWin.ToString() + " " + Widget.TranslateString("#STR_NEXODM_HUD_KILLS_LABEL");
+            m_RoundSub.SetText(subText);
+        }
+        int count = data.GetRoundResultCount();
+        if (count > ROUND_ROWS)
+            count = ROUND_ROWS;
         int rowIndex = 0;
-        for (rowIndex = 0; rowIndex < 10; rowIndex = rowIndex + 1)
+        for (rowIndex = 0; rowIndex < ROUND_ROWS; rowIndex = rowIndex + 1)
+        {
+            Widget row = null;
+            if (rowIndex < m_RoundRows.Count())
+                row = m_RoundRows.Get(rowIndex);
+            if (rowIndex >= count)
+            {
+                if (row)
+                    row.Show(false);
+                continue;
+            }
+            if (row)
+                row.Show(true);
+            bool isMe = false;
+            if (data.GetRoundResultIsReceiver(rowIndex) != 0)
+                isMe = true;
+            ImageWidget bg = null;
+            if (rowIndex < m_RoundRowBgs.Count())
+                bg = m_RoundRowBgs.Get(rowIndex);
+            if (bg)
+            {
+                if (isMe)
+                    bg.SetColor(ARGB(255, 0, 0, 0));
+                else
+                    bg.SetColor(ARGB(0, 0, 0, 0));
+            }
+            int textColor = ARGB(255, 255, 255, 255);
+            int dimColor = ARGB(200, 255, 255, 255);
+            if (isMe)
+            {
+                textColor = ARGB(255, 255, 0, 0);
+                dimColor = ARGB(255, 255, 0, 0);
+            }
+            TextWidget rankWidget = null;
+            if (rowIndex < m_RoundRanks.Count())
+                rankWidget = m_RoundRanks.Get(rowIndex);
+            if (rankWidget)
+            {
+                rankWidget.SetText((rowIndex + 1).ToString());
+                rankWidget.SetColor(dimColor);
+            }
+            TextWidget nameWidget = null;
+            if (rowIndex < m_RoundNames.Count())
+                nameWidget = m_RoundNames.Get(rowIndex);
+            if (nameWidget)
+            {
+                nameWidget.SetText(data.GetRoundResultName(rowIndex));
+                nameWidget.SetColor(textColor);
+            }
+            TextWidget killsWidget = null;
+            if (rowIndex < m_RoundKills.Count())
+                killsWidget = m_RoundKills.Get(rowIndex);
+            if (killsWidget)
+            {
+                killsWidget.SetText(data.GetRoundResultKills(rowIndex).ToString());
+                killsWidget.SetColor(textColor);
+            }
+            TextWidget deathsWidget = null;
+            if (rowIndex < m_RoundDeaths.Count())
+                deathsWidget = m_RoundDeaths.Get(rowIndex);
+            if (deathsWidget)
+            {
+                deathsWidget.SetText(data.GetRoundResultDeaths(rowIndex).ToString());
+                deathsWidget.SetColor(textColor);
+            }
+            TextWidget assistsWidget = null;
+            if (rowIndex < m_RoundAssists.Count())
+                assistsWidget = m_RoundAssists.Get(rowIndex);
+            if (assistsWidget)
+            {
+                assistsWidget.SetText(data.GetRoundResultAssists(rowIndex).ToString());
+                assistsWidget.SetColor(textColor);
+            }
+        }
+    }
+
+    protected void FillGlobalPanel(NexoDM_HudData data)
+    {
+        int rowIndex = 0;
+        for (rowIndex = 0; rowIndex < GLOBAL_ROWS; rowIndex = rowIndex + 1)
         {
             Widget row = null;
             if (rowIndex < m_GlobalRows.Count())
@@ -1018,11 +1220,9 @@ class NexoDM_HUD : Managed
             }
             if (row)
                 row.Show(true);
-
             bool isMe = false;
             if (data.GetGlobalIsReceiver(rowIndex) != 0)
                 isMe = true;
-
             ImageWidget bg = null;
             if (rowIndex < m_GlobalRowBgs.Count())
                 bg = m_GlobalRowBgs.Get(rowIndex);
@@ -1033,15 +1233,13 @@ class NexoDM_HUD : Managed
                 else
                     bg.SetColor(ARGB(0, 0, 0, 0));
             }
-
             int textColor = ARGB(255, 255, 255, 255);
-            int dimColor = ARGB(255, 200, 200, 200);
+            int dimColor = ARGB(200, 255, 255, 255);
             if (isMe)
             {
                 textColor = ARGB(255, 255, 0, 0);
                 dimColor = ARGB(255, 255, 0, 0);
             }
-
             TextWidget rankWidget = null;
             if (rowIndex < m_GlobalRanks.Count())
                 rankWidget = m_GlobalRanks.Get(rowIndex);

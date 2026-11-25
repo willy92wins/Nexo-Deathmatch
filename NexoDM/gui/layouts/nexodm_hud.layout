@@ -85,16 +85,16 @@ FrameWidgetClass HudRoot {
     }
    }
   }
-  FrameWidgetClass SelfGroup {
+  FrameWidgetClass KdaGroup {
    position 0.05 0.05
-   size 0.20 0.075
+   size 0.20 0.06
    hexactpos 0
    vexactpos 0
    hexactsize 0
    vexactsize 0
    visible 0
    {
-    ImageWidgetClass SelfPanel {
+    ImageWidgetClass KdaPanel {
      position 0 0
      size 1 1
      hexactpos 0
@@ -102,25 +102,25 @@ FrameWidgetClass HudRoot {
      hexactsize 0
      vexactsize 0
      ignorepointer 1
-     color 0 0 0 0.549
+     color 0 0 0 0.35
     }
-    TextWidgetClass SelfRank {
-     position 0.04 0.08
-     size 0.20 0.84
+    TextWidgetClass KdaKillsLabel {
+     position 0.05 0.10
+     size 0.26 0.28
      hexactpos 0
      vexactpos 0
      hexactsize 0
      vexactsize 0
      ignorepointer 1
      text ""
-     color 1 1 1 1
+     color 1 1 1 0.7843
      font "gui/fonts/sdf_MetronLight24"
      "text halign" left
      "text valign" center
     }
-    TextWidgetClass SelfPoints {
-     position 0.26 0.08
-     size 0.36 0.84
+    TextWidgetClass KdaKills {
+     position 0.05 0.42
+     size 0.26 0.48
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -132,18 +132,80 @@ FrameWidgetClass HudRoot {
      "text halign" left
      "text valign" center
     }
-    TextWidgetClass SelfKD {
-     position 0.64 0.08
-     size 0.34 0.84
+    ImageWidgetClass KdaDiv0 {
+     position 0.333 0.325
+     size 0.006 0.35
      hexactpos 0
      vexactpos 0
      hexactsize 0
      vexactsize 0
      ignorepointer 1
-     text "0 / 0"
+     color 1 1 1 0.2941
+    }
+    TextWidgetClass KdaDeathsLabel {
+     position 0.37 0.10
+     size 0.26 0.28
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
      color 1 1 1 0.7843
      font "gui/fonts/sdf_MetronLight24"
-     "text halign" right
+     "text halign" left
+     "text valign" center
+    }
+    TextWidgetClass KdaDeaths {
+     position 0.37 0.42
+     size 0.26 0.48
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text "0"
+     color 1 1 1 1
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" left
+     "text valign" center
+    }
+    ImageWidgetClass KdaDiv1 {
+     position 0.666 0.325
+     size 0.006 0.35
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     color 1 1 1 0.2941
+    }
+    TextWidgetClass KdaAssistsLabel {
+     position 0.70 0.10
+     size 0.28 0.28
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" left
+     "text valign" center
+    }
+    TextWidgetClass KdaAssists {
+     position 0.70 0.42
+     size 0.28 0.48
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text "0"
+     color 1 1 1 1
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" left
      "text valign" center
     }
    }
@@ -218,75 +280,323 @@ FrameWidgetClass HudRoot {
    }
   }
   FrameWidgetClass KillGroup {
-   position 0.75 0.05
-   size 0.20 0.10
+   position 0.60 0.05
+   size 0.35 0.115
    hexactpos 0
    vexactpos 0
    hexactsize 0
    vexactsize 0
    visible 0
    {
-    TextWidgetClass KillLine0 {
+    FrameWidgetClass KillRow0 {
      position 0 0
-     size 1 0.22
+     size 1 0.25
      hexactpos 0
      vexactpos 0
      hexactsize 0
      vexactsize 0
-     ignorepointer 1
-     text ""
-     color 1 1 1 1
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" right
-     "text valign" center
+     visible 0
+     {
+      TextWidgetClass KillKiller0 {
+       position 0 0
+       size 0.38 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      ItemPreviewWidgetClass KillPreview0 {
+       position 0.395 0.2
+       size 0.095 0.6
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       "force flip enable" 1
+      }
+      ImageWidgetClass KillFallback0 {
+       position 0.395 0.2
+       size 0.095 0.6
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       color 1 1 1 0.7843
+      }
+      TextWidgetClass KillWeaponText0 {
+       position 0.395 0
+       size 0.20 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass KillVictim0 {
+       position 0.51 0
+       size 0.475 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+     }
     }
-    TextWidgetClass KillLine1 {
-     position 0 0.26
-     size 1 0.22
+    FrameWidgetClass KillRow1 {
+     position 0 0.25
+     size 1 0.25
      hexactpos 0
      vexactpos 0
      hexactsize 0
      vexactsize 0
-     ignorepointer 1
-     text ""
-     color 1 1 1 0.7843
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" right
-     "text valign" center
+     visible 0
+     {
+      TextWidgetClass KillKiller1 {
+       position 0 0
+       size 0.38 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      ItemPreviewWidgetClass KillPreview1 {
+       position 0.395 0.2
+       size 0.095 0.6
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       "force flip enable" 1
+      }
+      ImageWidgetClass KillFallback1 {
+       position 0.395 0.2
+       size 0.095 0.6
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       color 1 1 1 0.7843
+      }
+      TextWidgetClass KillWeaponText1 {
+       position 0.395 0
+       size 0.20 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass KillVictim1 {
+       position 0.51 0
+       size 0.475 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+     }
     }
-    TextWidgetClass KillLine2 {
-     position 0 0.52
-     size 1 0.22
+    FrameWidgetClass KillRow2 {
+     position 0 0.50
+     size 1 0.25
      hexactpos 0
      vexactpos 0
      hexactsize 0
      vexactsize 0
-     ignorepointer 1
-     text ""
-     color 1 1 1 0.7843
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" right
-     "text valign" center
+     visible 0
+     {
+      TextWidgetClass KillKiller2 {
+       position 0 0
+       size 0.38 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      ItemPreviewWidgetClass KillPreview2 {
+       position 0.395 0.2
+       size 0.095 0.6
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       "force flip enable" 1
+      }
+      ImageWidgetClass KillFallback2 {
+       position 0.395 0.2
+       size 0.095 0.6
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       color 1 1 1 0.7843
+      }
+      TextWidgetClass KillWeaponText2 {
+       position 0.395 0
+       size 0.20 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass KillVictim2 {
+       position 0.51 0
+       size 0.475 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+     }
     }
-    TextWidgetClass KillLine3 {
-     position 0 0.78
-     size 1 0.22
+    FrameWidgetClass KillRow3 {
+     position 0 0.75
+     size 1 0.25
      hexactpos 0
      vexactpos 0
      hexactsize 0
      vexactsize 0
-     ignorepointer 1
-     text ""
-     color 1 1 1 0.7843
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" right
-     "text valign" center
+     visible 0
+     {
+      TextWidgetClass KillKiller3 {
+       position 0 0
+       size 0.38 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      ItemPreviewWidgetClass KillPreview3 {
+       position 0.395 0.2
+       size 0.095 0.6
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       "force flip enable" 1
+      }
+      ImageWidgetClass KillFallback3 {
+       position 0.395 0.2
+       size 0.095 0.6
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       color 1 1 1 0.7843
+      }
+      TextWidgetClass KillWeaponText3 {
+       position 0.395 0
+       size 0.20 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       visible 0
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass KillVictim3 {
+       position 0.51 0
+       size 0.475 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+     }
     }
    }
   }
   FrameWidgetClass TopGroup {
-   position 0.75 0.17
-   size 0.20 0.24
+   position 0.3542 0.4046
+   size 0.2917 0.1907
    hexactpos 0
    vexactpos 0
    hexactsize 0
@@ -304,22 +614,64 @@ FrameWidgetClass HudRoot {
      color 0 0 0 0.549
     }
     TextWidgetClass TopTitle {
-     position 0.04 0.02
-     size 0.92 0.12
+     position 0.025 0
+     size 0.45 0.1748
      hexactpos 0
      vexactpos 0
      hexactsize 0
      vexactsize 0
      ignorepointer 1
-     text "#STR_NEXODM_HUD_TOP5"
+     text ""
      color 1 1 1 0.7843
      font "gui/fonts/sdf_MetronLight24"
      "text halign" left
      "text valign" center
     }
+    TextWidgetClass TopKillsHead {
+     position 0.4893 0
+     size 0.1393 0.1748
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
+    TextWidgetClass TopDeathsHead {
+     position 0.6429 0
+     size 0.1393 0.1748
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
+    TextWidgetClass TopAssistsHead {
+     position 0.7964 0
+     size 0.1786 0.1748
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
     FrameWidgetClass TopRow0 {
-     position 0 0.16
-     size 1 0.15
+     position 0 0.1748
+     size 1 0.165
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -336,8 +688,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass TopRank0 {
-       position 0.04 0
-       size 0.10 1
+       position 0.025 0
+       size 0.0536 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -350,8 +702,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopName0 {
-       position 0.15 0
-       size 0.42 1
+       position 0.0929 0
+       size 0.3821 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -364,8 +716,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopKills0 {
-       position 0.59 0
-       size 0.11 1
+       position 0.4893 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -378,8 +730,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopDeaths0 {
-       position 0.72 0
-       size 0.11 1
+       position 0.6429 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -391,9 +743,9 @@ FrameWidgetClass HudRoot {
        "text halign" right
        "text valign" center
       }
-      TextWidgetClass TopPoints0 {
-       position 0.85 0
-       size 0.13 1
+      TextWidgetClass TopAssists0 {
+       position 0.7964 0
+       size 0.1786 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -408,8 +760,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass TopRow1 {
-     position 0 0.32
-     size 1 0.15
+     position 0 0.3398
+     size 1 0.165
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -426,8 +778,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass TopRank1 {
-       position 0.04 0
-       size 0.10 1
+       position 0.025 0
+       size 0.0536 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -440,8 +792,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopName1 {
-       position 0.15 0
-       size 0.42 1
+       position 0.0929 0
+       size 0.3821 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -454,8 +806,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopKills1 {
-       position 0.59 0
-       size 0.11 1
+       position 0.4893 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -468,8 +820,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopDeaths1 {
-       position 0.72 0
-       size 0.11 1
+       position 0.6429 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -481,9 +833,9 @@ FrameWidgetClass HudRoot {
        "text halign" right
        "text valign" center
       }
-      TextWidgetClass TopPoints1 {
-       position 0.85 0
-       size 0.13 1
+      TextWidgetClass TopAssists1 {
+       position 0.7964 0
+       size 0.1786 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -498,8 +850,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass TopRow2 {
-     position 0 0.48
-     size 1 0.15
+     position 0 0.5048
+     size 1 0.165
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -516,8 +868,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass TopRank2 {
-       position 0.04 0
-       size 0.10 1
+       position 0.025 0
+       size 0.0536 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -530,8 +882,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopName2 {
-       position 0.15 0
-       size 0.42 1
+       position 0.0929 0
+       size 0.3821 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -544,8 +896,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopKills2 {
-       position 0.59 0
-       size 0.11 1
+       position 0.4893 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -558,8 +910,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopDeaths2 {
-       position 0.72 0
-       size 0.11 1
+       position 0.6429 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -571,9 +923,9 @@ FrameWidgetClass HudRoot {
        "text halign" right
        "text valign" center
       }
-      TextWidgetClass TopPoints2 {
-       position 0.85 0
-       size 0.13 1
+      TextWidgetClass TopAssists2 {
+       position 0.7964 0
+       size 0.1786 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -588,8 +940,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass TopRow3 {
-     position 0 0.64
-     size 1 0.15
+     position 0 0.6698
+     size 1 0.165
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -606,8 +958,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass TopRank3 {
-       position 0.04 0
-       size 0.10 1
+       position 0.025 0
+       size 0.0536 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -620,8 +972,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopName3 {
-       position 0.15 0
-       size 0.42 1
+       position 0.0929 0
+       size 0.3821 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -634,8 +986,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopKills3 {
-       position 0.59 0
-       size 0.11 1
+       position 0.4893 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -648,8 +1000,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopDeaths3 {
-       position 0.72 0
-       size 0.11 1
+       position 0.6429 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -661,9 +1013,9 @@ FrameWidgetClass HudRoot {
        "text halign" right
        "text valign" center
       }
-      TextWidgetClass TopPoints3 {
-       position 0.85 0
-       size 0.13 1
+      TextWidgetClass TopAssists3 {
+       position 0.7964 0
+       size 0.1786 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -678,8 +1030,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass TopRow4 {
-     position 0 0.80
-     size 1 0.15
+     position 0 0.8348
+     size 1 0.165
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -696,8 +1048,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass TopRank4 {
-       position 0.04 0
-       size 0.10 1
+       position 0.025 0
+       size 0.0536 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -710,8 +1062,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopName4 {
-       position 0.15 0
-       size 0.42 1
+       position 0.0929 0
+       size 0.3821 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -724,8 +1076,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopKills4 {
-       position 0.59 0
-       size 0.11 1
+       position 0.4893 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -738,8 +1090,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass TopDeaths4 {
-       position 0.72 0
-       size 0.11 1
+       position 0.6429 0
+       size 0.1393 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -751,9 +1103,2454 @@ FrameWidgetClass HudRoot {
        "text halign" right
        "text valign" center
       }
-      TextWidgetClass TopPoints4 {
-       position 0.85 0
-       size 0.13 1
+      TextWidgetClass TopAssists4 {
+       position 0.7964 0
+       size 0.1786 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+   }
+  }
+  FrameWidgetClass RoundGroup {
+   position 0.3333 0.05
+   size 0.3333 0.90
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   visible 0
+   {
+    ImageWidgetClass RoundPanel {
+     position 0 0
+     size 1 1
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     color 0 0 0 0.549
+    }
+    TextWidgetClass RoundTitle {
+     position 0.0219 0
+     size 0.60 0.0535
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 1
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" left
+     "text valign" center
+    }
+    TextWidgetClass RoundSub {
+     position 0.64 0
+     size 0.3381 0.0535
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
+    TextWidgetClass RoundHeadTitle {
+     position 0.0219 0.0535
+     size 0.45 0.037
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" left
+     "text valign" center
+    }
+    TextWidgetClass RoundKillsHead {
+     position 0.5531 0.0535
+     size 0.1219 0.037
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
+    TextWidgetClass RoundDeathsHead {
+     position 0.6875 0.0535
+     size 0.1219 0.037
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
+    TextWidgetClass RoundAssistsHead {
+     position 0.8219 0.0535
+     size 0.1563 0.037
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
+    FrameWidgetClass RoundRow0 {
+     position 0 0.0905
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg0 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank0 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "1"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName0 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills0 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths0 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists0 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow1 {
+     position 0 0.1255
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg1 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank1 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "2"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName1 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills1 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths1 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists1 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow2 {
+     position 0 0.1605
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg2 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank2 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "3"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName2 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills2 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths2 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists2 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow3 {
+     position 0 0.1955
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg3 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank3 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "4"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName3 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills3 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths3 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists3 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow4 {
+     position 0 0.2305
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg4 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank4 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "5"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName4 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills4 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths4 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists4 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow5 {
+     position 0 0.2655
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg5 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank5 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "6"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName5 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills5 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths5 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists5 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow6 {
+     position 0 0.3005
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg6 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank6 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "7"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName6 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills6 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths6 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists6 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow7 {
+     position 0 0.3355
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg7 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank7 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "8"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName7 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills7 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths7 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists7 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow8 {
+     position 0 0.3705
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg8 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank8 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "9"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName8 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills8 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths8 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists8 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow9 {
+     position 0 0.4055
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg9 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank9 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "10"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName9 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills9 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths9 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists9 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow10 {
+     position 0 0.4405
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg10 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank10 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "11"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName10 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills10 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths10 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists10 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow11 {
+     position 0 0.4755
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg11 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank11 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "12"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName11 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills11 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths11 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists11 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow12 {
+     position 0 0.5105
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg12 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank12 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "13"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName12 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills12 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths12 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists12 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow13 {
+     position 0 0.5455
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg13 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank13 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "14"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName13 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills13 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths13 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists13 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow14 {
+     position 0 0.5805
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg14 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank14 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "15"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName14 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills14 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths14 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists14 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow15 {
+     position 0 0.6155
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg15 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank15 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "16"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName15 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills15 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths15 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists15 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow16 {
+     position 0 0.6505
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg16 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank16 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "17"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName16 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills16 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths16 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists16 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow17 {
+     position 0 0.6855
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg17 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank17 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "18"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName17 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills17 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths17 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists17 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow18 {
+     position 0 0.7205
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg18 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank18 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "19"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName18 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills18 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths18 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists18 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow19 {
+     position 0 0.7555
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg19 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank19 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "20"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName19 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills19 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths19 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists19 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow20 {
+     position 0 0.7905
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg20 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank20 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "21"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName20 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills20 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths20 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists20 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow21 {
+     position 0 0.8255
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg21 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank21 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "22"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName21 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills21 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths21 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists21 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow22 {
+     position 0 0.8605
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg22 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank22 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "23"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName22 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills22 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths22 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists22 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow23 {
+     position 0 0.8955
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg23 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank23 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "24"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName23 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills23 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths23 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists23 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow24 {
+     position 0 0.9305
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg24 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank24 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "25"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName24 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills24 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths24 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists24 {
+       position 0.8219 0
+       size 0.1563 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+     }
+    }
+    FrameWidgetClass RoundRow25 {
+     position 0 0.9655
+     size 1 0.0345
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      ImageWidgetClass RoundRowBg25 {
+       position 0 0
+       size 1 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       color 0 0 0 0
+      }
+      TextWidgetClass RoundRank25 {
+       position 0.0219 0
+       size 0.0469 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "26"
+       color 1 1 1 0.7843
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundName25 {
+       position 0.0813 0
+       size 0.4594 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text ""
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" left
+       "text valign" center
+      }
+      TextWidgetClass RoundKills25 {
+       position 0.5531 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundDeaths25 {
+       position 0.6875 0
+       size 0.1219 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "0"
+       color 1 1 1 1
+       font "gui/fonts/sdf_MetronLight24"
+       "text halign" right
+       "text valign" center
+      }
+      TextWidgetClass RoundAssists25 {
+       position 0.8219 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -770,8 +3567,8 @@ FrameWidgetClass HudRoot {
    }
   }
   FrameWidgetClass GlobalTopGroup {
-   position 0.02 0.16
-   size 0.26 0.62
+   position 0.3333 0.3019
+   size 0.3333 0.3963
    hexactpos 0
    vexactpos 0
    hexactsize 0
@@ -789,22 +3586,50 @@ FrameWidgetClass HudRoot {
      color 0 0 0 0.549
     }
     TextWidgetClass GlobalTitle {
-     position 0.04 0.01
-     size 0.92 0.06
+     position 0.0219 0
+     size 0.60 0.1215
      hexactpos 0
      vexactpos 0
      hexactsize 0
      vexactsize 0
      ignorepointer 1
-     text "#STR_NEXODM_HUD_GLOBAL_TOP"
-     color 1 1 1 0.7843
+     text ""
+     color 1 1 1 1
      font "gui/fonts/sdf_MetronLight24"
      "text halign" left
      "text valign" center
     }
+    TextWidgetClass GlobalPointsHead {
+     position 0.6875 0.1215
+     size 0.1563 0.0841
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
+    TextWidgetClass GlobalKillsHead {
+     position 0.8563 0.1215
+     size 0.1219 0.0841
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text ""
+     color 1 1 1 0.7843
+     font "gui/fonts/sdf_MetronLight24"
+     "text halign" right
+     "text valign" center
+    }
     FrameWidgetClass GlobalRow0 {
-     position 0 0.08
-     size 1 0.08
+     position 0 0.2056
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -821,8 +3646,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank0 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -835,8 +3660,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName0 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -849,8 +3674,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints0 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -863,8 +3688,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills0 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -879,8 +3704,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow1 {
-     position 0 0.17
-     size 1 0.08
+     position 0 0.2850
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -897,8 +3722,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank1 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -911,8 +3736,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName1 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -925,8 +3750,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints1 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -939,8 +3764,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills1 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -955,8 +3780,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow2 {
-     position 0 0.26
-     size 1 0.08
+     position 0 0.3644
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -973,8 +3798,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank2 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -987,8 +3812,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName2 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1001,8 +3826,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints2 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1015,8 +3840,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills2 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1031,8 +3856,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow3 {
-     position 0 0.35
-     size 1 0.08
+     position 0 0.4438
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -1049,8 +3874,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank3 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1063,8 +3888,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName3 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1077,8 +3902,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints3 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1091,8 +3916,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills3 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1107,8 +3932,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow4 {
-     position 0 0.44
-     size 1 0.08
+     position 0 0.5232
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -1125,8 +3950,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank4 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1139,8 +3964,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName4 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1153,8 +3978,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints4 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1167,8 +3992,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills4 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1183,8 +4008,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow5 {
-     position 0 0.53
-     size 1 0.08
+     position 0 0.6026
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -1201,8 +4026,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank5 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1215,8 +4040,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName5 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1229,8 +4054,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints5 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1243,8 +4068,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills5 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1259,8 +4084,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow6 {
-     position 0 0.62
-     size 1 0.08
+     position 0 0.6820
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -1277,8 +4102,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank6 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1291,8 +4116,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName6 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1305,8 +4130,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints6 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1319,8 +4144,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills6 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1335,8 +4160,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow7 {
-     position 0 0.71
-     size 1 0.08
+     position 0 0.7614
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -1353,8 +4178,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank7 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1367,8 +4192,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName7 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1381,8 +4206,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints7 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1395,8 +4220,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills7 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1411,8 +4236,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow8 {
-     position 0 0.80
-     size 1 0.08
+     position 0 0.8408
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -1429,8 +4254,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank8 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1443,8 +4268,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName8 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1457,8 +4282,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints8 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1471,8 +4296,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills8 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1487,8 +4312,8 @@ FrameWidgetClass HudRoot {
      }
     }
     FrameWidgetClass GlobalRow9 {
-     position 0 0.89
-     size 1 0.08
+     position 0 0.9202
+     size 1 0.0794
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -1505,8 +4330,8 @@ FrameWidgetClass HudRoot {
        color 0 0 0 0
       }
       TextWidgetClass GlobalRank9 {
-       position 0.04 0
-       size 0.10 1
+       position 0.0219 0
+       size 0.0469 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1519,8 +4344,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalName9 {
-       position 0.15 0
-       size 0.45 1
+       position 0.0813 0
+       size 0.5937 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1533,8 +4358,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalPoints9 {
-       position 0.62 0
-       size 0.16 1
+       position 0.6875 0
+       size 0.1563 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1547,8 +4372,8 @@ FrameWidgetClass HudRoot {
        "text valign" center
       }
       TextWidgetClass GlobalKills9 {
-       position 0.80 0
-       size 0.16 1
+       position 0.8563 0
+       size 0.1219 1
        hexactpos 0
        vexactpos 0
        hexactsize 0
@@ -1564,335 +4389,5 @@ FrameWidgetClass HudRoot {
     }
    }
   }
-  FrameWidgetClass WeaponGroup {
-   position 0.05 0.60
-   size 0.20 0.15
-   hexactpos 0
-   vexactpos 0
-   hexactsize 0
-   vexactsize 0
-   visible 0
-   {
-    ImageWidgetClass WeaponPanel {
-     position 0 0
-     size 1 1
-     hexactpos 0
-     vexactpos 0
-     hexactsize 0
-     vexactsize 0
-     ignorepointer 1
-     color 0 0 0 0.549
-    }
-    ItemPreviewWidgetClass WeaponPreview {
-     position 0.04 0.08
-     size 0.45 0.55
-     hexactpos 0
-     vexactpos 0
-     hexactsize 0
-     vexactsize 0
-     ignorepointer 1
-     "force flip enable" 1
-    }
-    TextWidgetClass WeaponName {
-     position 0.52 0.08
-     size 0.45 0.30
-     hexactpos 0
-     vexactpos 0
-     hexactsize 0
-     vexactsize 0
-     ignorepointer 1
-     text ""
-     color 1 1 1 1
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" left
-     "text valign" center
-    }
-    TextWidgetClass WeaponAmmo {
-     position 0.52 0.40
-     size 0.45 0.30
-     hexactpos 0
-     vexactpos 0
-     hexactsize 0
-     vexactsize 0
-     ignorepointer 1
-     text ""
-     color 1 1 1 1
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" left
-     "text valign" center
-    }
-    TextWidgetClass WeaponMagLabel {
-     position 0.52 0.64
-     size 0.45 0.16
-     hexactpos 0
-     vexactpos 0
-     hexactsize 0
-     vexactsize 0
-     ignorepointer 1
-     text "#STR_NEXODM_HUD_MAGAZINE"
-     color 1 1 1 0.7843
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" left
-     "text valign" center
-    }
-    ImageWidgetClass WeaponMeterTrack {
-     position 0.04 0.82
-     size 0.92 0.08
-     hexactpos 0
-     vexactpos 0
-     hexactsize 0
-     vexactsize 0
-     ignorepointer 1
-     color 0 0 0 0.5
-    }
-    ImageWidgetClass WeaponMeterFill {
-     position 0.04 0.82
-     size 0 0.08
-     hexactpos 0
-     vexactpos 0
-     hexactsize 0
-     vexactsize 0
-     ignorepointer 1
-     color 1 1 1 1
-    }
-   }
-  }
-  FrameWidgetClass VitalsFrame {
-   position 0 0
-   size 0.9 0.9
-   halign center_ref
-   valign center_ref
-   hexactpos 0
-   vexactpos 0
-   hexactsize 0
-   vexactsize 0
-   visible 1
-   {
-  FrameWidgetClass VitalsGroup {
-   clipchildren 0
-   position 0 0
-   size 260 81
-   halign right_ref
-   valign bottom_ref
-   hexactpos 1
-   vexactpos 1
-   hexactsize 1
-   vexactsize 1
-   fixaspect fixwidth
-   priority 100
-   visible 0
-   {
-    TextWidgetClass HealthPct {
-     position 0 9
-     size 35 14
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     text ""
-     color 0.8627 0.8627 0.8627 1
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" center
-     "text valign" center
-    }
-    ImageWidgetClass HealthTrendUp {
-     position 6 1
-     size 22 7
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     visible 0
-     color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowUp1"
-     mode blend
-     "src alpha" 1
-     "clamp mode" clamp
-     "flip v" 1
-    }
-    ImageWidgetClass HealthTrendDown {
-     position 6 1
-     size 22 7
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     visible 0
-     color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowUp1"
-     mode blend
-     "src alpha" 1
-     "clamp mode" clamp
-     "flip v" 0
-    }
-    TextWidgetClass BloodPct {
-     position 43 9
-     size 35 14
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     text ""
-     color 0.8627 0.8627 0.8627 1
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" center
-     "text valign" center
-    }
-    ImageWidgetClass BloodTrendUp {
-     position 49 1
-     size 22 7
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     visible 0
-     color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowUp1"
-     mode blend
-     "src alpha" 1
-     "clamp mode" clamp
-     "flip v" 1
-    }
-    ImageWidgetClass BloodTrendDown {
-     position 49 1
-     size 22 7
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     visible 0
-     color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowUp1"
-     mode blend
-     "src alpha" 1
-     "clamp mode" clamp
-     "flip v" 0
-    }
-    TextWidgetClass FoodPct {
-     position 139 9
-     size 35 14
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     text ""
-     color 0.8627 0.8627 0.8627 1
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" center
-     "text valign" center
-    }
-    ImageWidgetClass FoodTrendUp {
-     position 145 1
-     size 22 7
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     visible 0
-     color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowUp1"
-     mode blend
-     "src alpha" 1
-     "clamp mode" clamp
-     "flip v" 1
-    }
-    ImageWidgetClass FoodTrendDown {
-     position 145 1
-     size 22 7
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     visible 0
-     color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowUp1"
-     mode blend
-     "src alpha" 1
-     "clamp mode" clamp
-     "flip v" 0
-    }
-    TextWidgetClass WaterPct {
-     position 182 9
-     size 35 14
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     text ""
-     color 0.8627 0.8627 0.8627 1
-     font "gui/fonts/sdf_MetronLight24"
-     "text halign" center
-     "text valign" center
-    }
-    ImageWidgetClass WaterTrendUp {
-     position 188 1
-     size 22 7
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     visible 0
-     color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowUp1"
-     mode blend
-     "src alpha" 1
-     "clamp mode" clamp
-     "flip v" 1
-    }
-    ImageWidgetClass WaterTrendDown {
-     position 188 1
-     size 22 7
-     halign right_ref
-     valign bottom_ref
-     hexactpos 1
-     vexactpos 1
-     hexactsize 1
-     vexactsize 1
-     ignorepointer 1
-     visible 0
-     color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowUp1"
-     mode blend
-     "src alpha" 1
-     "clamp mode" clamp
-     "flip v" 0
-    }
-   }
-  }
-  }
-
  }
 }
