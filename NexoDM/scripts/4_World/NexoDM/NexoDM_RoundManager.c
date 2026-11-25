@@ -1311,6 +1311,9 @@ class NexoDM_RoundManager : Managed
         {
             entry = GetOrCreateEntry(steamId);
             entry.role = NexoDM_Role.PARTICIPANT;
+            // F6 r2 #3: remember the name here too, so a reconnect-only participant who leaves before
+            // EndRound still enters the leaderboard with a name.
+            RememberPlayerName(entry, identity);
             if (player.IsAlive() && EnsureConfig())
             {
                 vector spawn = PickRandomSpawn();

@@ -120,23 +120,41 @@ class NexoDM_Leaderboard
         // R2: FileExist(string) in scripts/1_core/proto/ensystem.c:397.
         if (FileExist(NexoDM_Constants.LEADERBOARD_PATH))
         {
-            if (FileExist(NexoDM_Constants.LEADERBOARD_BAK_PATH))
+            // F6 r2: only a readable leaderboard.json may replace the .bak; an unreadable one (a failed
+            // quarantine or a partial recovery copy) must never overwrite the last good backup.
+            NexoDM_LeaderboardFile liveCheck = new NexoDM_LeaderboardFile();
+            string liveError;
+            bool liveReadable = false;
+            if (JsonFileLoader<NexoDM_LeaderboardFile>.LoadFile(NexoDM_Constants.LEADERBOARD_PATH, liveCheck, liveError))
             {
-                // R2: DeleteFile(string) in scripts/1_core/proto/ensystem.c:528.
-                if (!DeleteFile(NexoDM_Constants.LEADERBOARD_BAK_PATH))
+                if (liveCheck && liveCheck.entries)
+                    liveReadable = true;
+            }
+
+            if (liveReadable)
+            {
+                if (FileExist(NexoDM_Constants.LEADERBOARD_BAK_PATH))
                 {
-                    LogBoard("guardado fallido: no se pudo renovar leaderboard.json.bak; leaderboard.json queda intacto");
+                    // R2: DeleteFile(string) in scripts/1_core/proto/ensystem.c:528.
+                    if (!DeleteFile(NexoDM_Constants.LEADERBOARD_BAK_PATH))
+                    {
+                        LogBoard("guardado fallido: no se pudo renovar leaderboard.json.bak; leaderboard.json queda intacto");
+                        DeleteFile(NexoDM_Constants.LEADERBOARD_TMP_PATH);
+                        return false;
+                    }
+                }
+
+                // R2: CopyFile(string,string) in scripts/1_core/proto/ensystem.c:531.
+                if (!CopyFile(NexoDM_Constants.LEADERBOARD_PATH, NexoDM_Constants.LEADERBOARD_BAK_PATH))
+                {
+                    LogBoard("guardado fallido: no se pudo copiar leaderboard.json a leaderboard.json.bak; leaderboard.json queda intacto");
                     DeleteFile(NexoDM_Constants.LEADERBOARD_TMP_PATH);
                     return false;
                 }
             }
-
-            // R2: CopyFile(string,string) in scripts/1_core/proto/ensystem.c:531.
-            if (!CopyFile(NexoDM_Constants.LEADERBOARD_PATH, NexoDM_Constants.LEADERBOARD_BAK_PATH))
+            else
             {
-                LogBoard("guardado fallido: no se pudo copiar leaderboard.json a leaderboard.json.bak; leaderboard.json queda intacto");
-                DeleteFile(NexoDM_Constants.LEADERBOARD_TMP_PATH);
-                return false;
+                LogBoard("leaderboard.json ilegible: no se copia a .bak; .bak intacto " + liveError);
             }
 
             if (!DeleteFile(NexoDM_Constants.LEADERBOARD_PATH))
@@ -261,7 +279,13 @@ class NexoDM_Leaderboard
         if (FileExist(NexoDM_Constants.LEADERBOARD_PATH))
             return;
         if (!CopyFile(sourcePath, NexoDM_Constants.LEADERBOARD_PATH))
-            LogBoard("recuperado en memoria, no se pudo copiar al principal");
+        {
+            // F6 r2: keep the source (it is the only good copy) and drop any partial destination.
+            LogBoard("recuperado en memoria, no se pudo copiar al principal; se conserva el origen");
+            if (FileExist(NexoDM_Constants.LEADERBOARD_PATH))
+                DeleteFile(NexoDM_Constants.LEADERBOARD_PATH);
+            return;
+        }
         if (sourcePath == NexoDM_Constants.LEADERBOARD_TMP_PATH)
             DeleteFile(NexoDM_Constants.LEADERBOARD_TMP_PATH);
     }
@@ -269,21 +293,21 @@ class NexoDM_Leaderboard
     protected void QuarantineBroken(string errorMessage)
     {
         bool copied = false;
+        bool removed = false;
         if (FileExist(NexoDM_Constants.LEADERBOARD_PATH))
         {
             if (FileExist(NexoDM_Constants.LEADERBOARD_BROKEN_PATH))
                 DeleteFile(NexoDM_Constants.LEADERBOARD_BROKEN_PATH);
 
             copied = CopyFile(NexoDM_Constants.LEADERBOARD_PATH, NexoDM_Constants.LEADERBOARD_BROKEN_PATH);
-            if (copied)
-                DeleteFile(NexoDM_Constants.LEADERBOARD_PATH);
-            else
-                DeleteFile(NexoDM_Constants.LEADERBOARD_PATH);
+            removed = DeleteFile(NexoDM_Constants.LEADERBOARD_PATH);
         }
 
         string detail = "leaderboard.json ilegible, apartado sin tocar leaderboard.json.bak";
         if (!copied)
-            detail = "leaderboard.json ilegible, no se pudo copiar a .broken; principal retirado; .bak intacto";
+            detail = "leaderboard.json ilegible, no se pudo copiar a .broken; .bak intacto";
+        if (!removed)
+            detail = detail + "; no se pudo retirar el principal (SaveSafe no lo copiará a .bak)";
         if (errorMessage != string.Empty)
             detail = detail + " " + errorMessage;
         LogBoard(detail);
