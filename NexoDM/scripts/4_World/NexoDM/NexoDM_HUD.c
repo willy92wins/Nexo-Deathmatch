@@ -63,6 +63,11 @@ class NexoDM_HUD : Managed
     protected int m_PrevBlood;
     protected int m_PrevWater;
     protected int m_PrevFood;
+    protected int m_TrendHealth;
+    protected int m_TrendBlood;
+    protected int m_TrendWater;
+    protected int m_TrendFood;
+    protected float m_ClockMarkY;
     protected float m_HudTime;
     protected float m_RefreshAcc;
     protected int m_KillSeenCount;
@@ -86,6 +91,11 @@ class NexoDM_HUD : Managed
         m_PrevBlood = -1;
         m_PrevWater = -1;
         m_PrevFood = -1;
+        m_TrendHealth = 0;
+        m_TrendBlood = 0;
+        m_TrendWater = 0;
+        m_TrendFood = 0;
+        m_ClockMarkY = 0.48;
         m_HudTime = 0;
         m_RefreshAcc = 0;
         m_KillSeenCount = 0;
@@ -135,13 +145,83 @@ class NexoDM_HUD : Managed
             m_CountdownActive = false;
             SetVanillaHudVisible(true);
         }
+        if (m_WeaponPreview)
+            m_WeaponPreview.SetItem(null);
+        m_WeaponPreview = null;
+        m_WeaponShown = null;
         if (m_Root)
             m_Root.Unlink();
         m_Root = null;
         m_CountGroup = null;
+        m_CountLabel = null;
         m_CountNumber = null;
         m_CountBar = null;
         m_RoundTag = null;
+        m_SelfGroup = null;
+        m_SelfRank = null;
+        m_SelfPoints = null;
+        m_SelfKD = null;
+        m_ClockGroup = null;
+        m_ClockTime = null;
+        m_ClockGoal = null;
+        m_ClockFillMe = null;
+        m_ClockMarkLead = null;
+        m_KillGroup = null;
+        m_TopGroup = null;
+        m_WeaponGroup = null;
+        m_WeaponName = null;
+        m_WeaponAmmo = null;
+        m_WeaponMeterFill = null;
+        m_VitalsGroup = null;
+        m_HealthPct = null;
+        m_BloodPct = null;
+        m_WaterPct = null;
+        m_FoodPct = null;
+        m_HealthTrendUp = null;
+        m_HealthTrendDown = null;
+        m_BloodTrendUp = null;
+        m_BloodTrendDown = null;
+        m_WaterTrendUp = null;
+        m_WaterTrendDown = null;
+        m_FoodTrendUp = null;
+        m_FoodTrendDown = null;
+        if (m_KillLines)
+            m_KillLines.Clear();
+        m_KillLines = null;
+        if (m_TopRows)
+            m_TopRows.Clear();
+        m_TopRows = null;
+        if (m_TopRowBgs)
+            m_TopRowBgs.Clear();
+        m_TopRowBgs = null;
+        if (m_TopRanks)
+            m_TopRanks.Clear();
+        m_TopRanks = null;
+        if (m_TopNames)
+            m_TopNames.Clear();
+        m_TopNames = null;
+        if (m_TopKills)
+            m_TopKills.Clear();
+        m_TopKills = null;
+        if (m_TopDeaths)
+            m_TopDeaths.Clear();
+        m_TopDeaths = null;
+        if (m_TopPoints)
+            m_TopPoints.Clear();
+        m_TopPoints = null;
+        if (m_KillTimes)
+            m_KillTimes.Clear();
+        m_KillTimes = null;
+        m_Top5Held = false;
+        m_PrevHealth = -1;
+        m_PrevBlood = -1;
+        m_PrevWater = -1;
+        m_PrevFood = -1;
+        m_TrendHealth = 0;
+        m_TrendBlood = 0;
+        m_TrendWater = 0;
+        m_TrendFood = 0;
+        m_F5bVisible = false;
         m_TimeLeft = -1;
         m_CountTotal = 0;
     }
@@ -156,6 +236,17 @@ class NexoDM_HUD : Managed
     void SetTop5Visible(bool held)
     {
         m_Top5Held = held;
+        if (!m_TopGroup)
+            return;
+        if (held && CanShowF5b())
+        {
+            m_TopGroup.Show(true);
+            UpdateTop5();
+        }
+        else
+        {
+            m_TopGroup.Show(false);
+        }
     }
 
     void StartCountdown(int seconds)
@@ -237,6 +328,13 @@ class NexoDM_HUD : Managed
         Widget clockTrack = m_Root.FindAnyWidget("ClockTrack");
         if (clockTrack)
             clockTrack.GetSize(m_ClockTrackW, m_ClockTrackH);
+        if (m_ClockMarkLead)
+        {
+            float markX = 0;
+            float markY = 0;
+            m_ClockMarkLead.GetPos(markX, markY);
+            m_ClockMarkY = markY;
+        }
         m_KillGroup = m_Root.FindAnyWidget("KillGroup");
         m_TopGroup = m_Root.FindAnyWidget("TopGroup");
         TextWidget topTitle = TextWidget.Cast(m_Root.FindAnyWidget("TopTitle"));
@@ -300,6 +398,18 @@ class NexoDM_HUD : Managed
             m_WeaponGroup.Show(false);
         if (m_VitalsGroup)
             m_VitalsGroup.Show(false);
+        if (m_WeaponPreview)
+            m_WeaponPreview.SetItem(null);
+        m_WeaponShown = null;
+        m_Top5Held = false;
+        m_PrevHealth = -1;
+        m_PrevBlood = -1;
+        m_PrevWater = -1;
+        m_PrevFood = -1;
+        m_TrendHealth = 0;
+        m_TrendBlood = 0;
+        m_TrendWater = 0;
+        m_TrendFood = 0;
         m_F5bVisible = false;
     }
 
@@ -315,13 +425,24 @@ class NexoDM_HUD : Managed
             return false;
         if (!data.IsRoundActive())
             return false;
+        if (m_CountdownActive)
+            return false;
         PlayerBase player = PlayerBase.Cast(game.GetPlayer());
         if (!player)
             return false;
         if (player.m_GG_Role != NexoDM_Role.PARTICIPANT)
             return false;
+        if (!player.IsAlive())
+            return false;
+        if (player.IsUnconscious())
+            return false;
         NexoDM_KillerCam cam = NexoDM_KillerCam.Get();
         if (cam && cam.IsActive())
+            return false;
+        if (cam && cam.IsSuppressingDeathScreen())
+            return false;
+        Mission mission = game.GetMission();
+        if (mission && mission.IsPlayerRespawning())
             return false;
         UIManager ui = game.GetUIManager();
         if (ui && ui.GetMenu())
@@ -396,30 +517,44 @@ class NexoDM_HUD : Managed
             }
             m_ClockGoal.SetText(goalText);
         }
-        if (m_ClockFillMe && killsToWin > 0 && m_ClockTrackW > 0)
+        if (m_ClockFillMe)
         {
-            float fracMe = 0;
-            if (data.HasSelf())
-                fracMe = (data.GetKills() * 1.0) / killsToWin;
-            if (fracMe < 0)
-                fracMe = 0;
-            if (fracMe > 1)
-                fracMe = 1;
-            m_ClockFillMe.SetSize(m_ClockTrackW * fracMe, m_ClockTrackH);
-            m_ClockFillMe.Show(true);
+            if (killsToWin > 0 && m_ClockTrackW > 0)
+            {
+                float fracMe = 0;
+                if (data.HasSelf())
+                    fracMe = (data.GetKills() * 1.0) / killsToWin;
+                if (fracMe < 0)
+                    fracMe = 0;
+                if (fracMe > 1)
+                    fracMe = 1;
+                m_ClockFillMe.SetSize(m_ClockTrackW * fracMe, m_ClockTrackH);
+                m_ClockFillMe.Show(true);
+            }
+            else
+            {
+                m_ClockFillMe.Show(false);
+            }
         }
-        if (m_ClockMarkLead && killsToWin > 0 && m_ClockTrackW > 0)
+        if (m_ClockMarkLead)
         {
-            int leadKills = 0;
-            if (data.GetTopCount() > 0)
-                leadKills = data.GetTopKills(0);
-            float fracLead = (leadKills * 1.0) / killsToWin;
-            if (fracLead < 0)
-                fracLead = 0;
-            if (fracLead > 1)
-                fracLead = 1;
-            m_ClockMarkLead.SetPos(m_ClockTrackW * fracLead, 0, true);
-            m_ClockMarkLead.Show(true);
+            if (killsToWin > 0 && m_ClockTrackW > 0)
+            {
+                int leadKills = 0;
+                if (data.GetTopCount() > 0)
+                    leadKills = data.GetTopKills(0);
+                float fracLead = (leadKills * 1.0) / killsToWin;
+                if (fracLead < 0)
+                    fracLead = 0;
+                if (fracLead > 1)
+                    fracLead = 1;
+                m_ClockMarkLead.SetPos(m_ClockTrackW * fracLead, m_ClockMarkY, true);
+                m_ClockMarkLead.Show(true);
+            }
+            else
+            {
+                m_ClockMarkLead.Show(false);
+            }
         }
     }
 
@@ -436,24 +571,23 @@ class NexoDM_HUD : Managed
             widget.SetColor(ARGB(255, 220, 220, 220));
     }
 
-    protected void SetTrend(ImageWidget upWidget, ImageWidget downWidget, int previous, int current)
+    protected int NextTrend(int storedTrend, int previous, int current)
+    {
+        if (previous < 0)
+            return 0;
+        if (current > previous)
+            return 1;
+        if (current < previous)
+            return -1;
+        return storedTrend;
+    }
+
+    protected void ApplyTrend(ImageWidget upWidget, ImageWidget downWidget, int trend)
     {
         if (upWidget)
-            upWidget.Show(false);
+            upWidget.Show(trend > 0);
         if (downWidget)
-            downWidget.Show(false);
-        if (previous < 0)
-            return;
-        if (current > previous)
-        {
-            if (upWidget)
-                upWidget.Show(true);
-        }
-        if (current < previous)
-        {
-            if (downWidget)
-                downWidget.Show(true);
-        }
+            downWidget.Show(trend < 0);
     }
 
     protected void UpdateVitals()
@@ -471,14 +605,22 @@ class NexoDM_HUD : Managed
         SetPct(m_BloodPct, blood);
         SetPct(m_WaterPct, water);
         SetPct(m_FoodPct, food);
-        SetTrend(m_HealthTrendUp, m_HealthTrendDown, m_PrevHealth, health);
-        SetTrend(m_BloodTrendUp, m_BloodTrendDown, m_PrevBlood, blood);
-        SetTrend(m_WaterTrendUp, m_WaterTrendDown, m_PrevWater, water);
-        SetTrend(m_FoodTrendUp, m_FoodTrendDown, m_PrevFood, food);
-        m_PrevHealth = health;
-        m_PrevBlood = blood;
-        m_PrevWater = water;
-        m_PrevFood = food;
+        m_TrendHealth = NextTrend(m_TrendHealth, m_PrevHealth, health);
+        m_TrendBlood = NextTrend(m_TrendBlood, m_PrevBlood, blood);
+        m_TrendWater = NextTrend(m_TrendWater, m_PrevWater, water);
+        m_TrendFood = NextTrend(m_TrendFood, m_PrevFood, food);
+        if (m_PrevHealth < 0 || health != m_PrevHealth)
+            m_PrevHealth = health;
+        if (m_PrevBlood < 0 || blood != m_PrevBlood)
+            m_PrevBlood = blood;
+        if (m_PrevWater < 0 || water != m_PrevWater)
+            m_PrevWater = water;
+        if (m_PrevFood < 0 || food != m_PrevFood)
+            m_PrevFood = food;
+        ApplyTrend(m_HealthTrendUp, m_HealthTrendDown, m_TrendHealth);
+        ApplyTrend(m_BloodTrendUp, m_BloodTrendDown, m_TrendBlood);
+        ApplyTrend(m_WaterTrendUp, m_WaterTrendDown, m_TrendWater);
+        ApplyTrend(m_FoodTrendUp, m_FoodTrendDown, m_TrendFood);
     }
 
     protected void UpdateWeapon()
@@ -489,6 +631,9 @@ class NexoDM_HUD : Managed
         PlayerBase player = PlayerBase.Cast(game.GetPlayer());
         if (!player)
         {
+            if (m_WeaponPreview)
+                m_WeaponPreview.SetItem(null);
+            m_WeaponShown = null;
             if (m_WeaponGroup)
                 m_WeaponGroup.Show(false);
             return;
@@ -497,6 +642,8 @@ class NexoDM_HUD : Managed
         Weapon_Base weapon = Weapon_Base.Cast(inHands);
         if (!weapon)
         {
+            if (m_WeaponPreview)
+                m_WeaponPreview.SetItem(null);
             m_WeaponShown = null;
             if (m_WeaponGroup)
                 m_WeaponGroup.Show(false);
@@ -507,33 +654,44 @@ class NexoDM_HUD : Managed
         if (m_WeaponPreview && m_WeaponShown != inHands)
         {
             m_WeaponPreview.SetItem(weapon);
+            m_WeaponPreview.SetView(weapon.GetViewIndex());
             m_WeaponShown = inHands;
         }
         if (m_WeaponName)
             m_WeaponName.SetText(weapon.GetDisplayName());
-        int muzzle = weapon.GetCurrentMuzzle();
         int current = 0;
         int maximum = 0;
-        if (weapon.HasInternalMagazine(muzzle))
+        bool magCounted = false;
+        int muzzleCount = weapon.GetMuzzleCount();
+        if (muzzleCount < 1)
+            muzzleCount = 1;
+        int muzzleIndex = 0;
+        for (muzzleIndex = 0; muzzleIndex < muzzleCount; muzzleIndex = muzzleIndex + 1)
         {
-            current = weapon.GetTotalCartridgeCount(muzzle);
-            maximum = weapon.GetTotalMaxCartridgeCount(muzzle);
-        }
-        else
-        {
-            Magazine mag = weapon.GetMagazine(muzzle);
+            if (weapon.HasInternalMagazine(muzzleIndex))
+            {
+                current = current + weapon.GetTotalCartridgeCount(muzzleIndex);
+                maximum = maximum + weapon.GetTotalMaxCartridgeCount(muzzleIndex);
+                continue;
+            }
+            Magazine mag = weapon.GetMagazine(muzzleIndex);
             if (mag)
             {
-                current = mag.GetAmmoCount();
-                if (!weapon.IsChamberEmpty(muzzle))
+                if (!magCounted)
+                {
+                    current = current + mag.GetAmmoCount();
+                    maximum = maximum + game.ConfigGetInt("CfgMagazines " + mag.GetType() + " count");
+                    magCounted = true;
+                }
+                maximum = maximum + 1;
+                if (!weapon.IsChamberEmpty(muzzleIndex) && !weapon.IsChamberFiredOut(muzzleIndex) && !weapon.IsChamberJammed(muzzleIndex))
                     current = current + 1;
-                maximum = game.ConfigGetInt("CfgMagazines " + mag.GetType() + " count");
             }
             else
             {
-                if (!weapon.IsChamberEmpty(muzzle))
-                    current = 1;
-                maximum = 0;
+                maximum = maximum + 1;
+                if (!weapon.IsChamberEmpty(muzzleIndex) && !weapon.IsChamberFiredOut(muzzleIndex) && !weapon.IsChamberJammed(muzzleIndex))
+                    current = current + 1;
             }
         }
         if (m_WeaponAmmo)

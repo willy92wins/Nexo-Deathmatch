@@ -70,3 +70,17 @@ Al pasar la ronda de inactiva a activa se vacía el killfeed (`SetRound`, `NexoD
 - El redondeo de los porcentajes contra valores reales de salud/sangre/stats.
 - El desfase del cronómetro local frente al `Timer` de la ronda.
 - Los tres payloads rotos del README: el comportamiento sale del `return` antes de `SetTop`, no de un test ejecutado.
+
+## Corrección 1
+
+Revisión `F5-REVIEW-R1.md`. Sin compilar. `NexoDM_RPC.c` no cambia: los ids siguen igual.
+
+- **#4.** `HUD_VITALS` sale con `guaranteed` true (`NexoDM_PlayerBase.c:408`). `NexoDM_ResetVitalsSent` (`:412`) pone la caché en -1 al empezar la ronda (`NexoDM_RoundManager.c:497`), al respawn (`:1030`), al entrar tarde (`:1236`) y al reconectar (`:1292`, `:1313`).
+- **#6.** `BroadcastHudSelf` (`NexoDM_RoundManager.c:2654`) manda `HUD_SELF` a cada participante conectado tras una baja (`PublishKillHud`), al empezar la ronda, al entrar tarde y al reconectar. El puesto de quien no intervino en la baja se actualiza.
+- **#7.** `PlayerBase.OnDisconnect` (`NexoDM_PlayerBase.c:105`) llama a `OnParticipantDisconnected` (`NexoDM_RoundManager.c:2622`). `IsEntryOnline` (`:334`) trata `IsPlayerDisconnected` como fuera, y entonces se reenvían `HUD_TOP5` y `HUD_SELF`.
+- **#8.** `HUD_TOP5`: nombre vacío descarta el payload entero (`NexoDM_PlayerBase.c:540`). `HUD_SELF`: puntos, bajas, muertes o puesto negativos también (`:505`).
+- **#14.** `NexoDM_HudData.Reset` (`NexoDM_HudData.c:108`) en el cliente al `OnDisconnect` (`NexoDM_PlayerBase.c:133`) y al `EEDelete` del jugador local (`:98`). `SetRound` (`NexoDM_HudData.c:149`) limpia vitales, ficha, top y killfeed al acabar (activa = no) y al empezar (antes inactiva, o el reloj salta más de 2 s porque no llegó el paquete de fin). Un `HUD_ROUND` activo de la misma ronda no borra el killfeed.
+- **#16.** `NexoDM_HandleHudVitalsRPC` (`NexoDM_PlayerBase.c:447`) vuelve sin escribir si `this` no es el jugador local.
+- **#19.** `CancelHudTop5Flush` (`NexoDM_RoundManager.c:2642`) hace `ScriptCallQueue.Remove(FlushHudTop5)` en `EndRound` (`:250`, y justo después manda el top final en el acto) y en `BeginRound` (`:484`).
+
+No verificado: que el motor llame `OnDisconnect` en el cliente (por eso también `EEDelete` del jugador local), ni que `Remove` quite un `CallLater` que no estaba encolado.

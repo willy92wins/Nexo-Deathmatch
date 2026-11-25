@@ -85,6 +85,57 @@ modded class PlayerBase
         }
     }
 
+    // R2: PlayerBase.EEDelete(EntityAI) in scripts/4_world/entities/manbase/playerbase.c:1393.
+    override void EEDelete(EntityAI parent)
+    {
+#ifndef SERVER
+        DayZGame game = GetGame();
+        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
+        if (game && this == PlayerBase.Cast(game.GetPlayer()))
+        {
+            NexoDM_HudData data = NexoDM_HudData.Get();
+            if (data)
+                data.Reset();
+        }
+#endif
+        super.EEDelete(parent);
+    }
+
+    // R2: PlayerBase.OnDisconnect() in scripts/4_world/entities/manbase/playerbase.c:7647.
+    override void OnDisconnect()
+    {
+        super.OnDisconnect();
+
+#ifdef SERVER
+        if (!NexoDM_IsDedicatedServer())
+            return;
+
+        NexoDM_RoundManager manager = NexoDM_RoundManager.GetInstance();
+        if (!manager)
+            return;
+
+        string steamId = m_GG_SteamId;
+        PlayerIdentity identity = GetIdentity();
+        if (identity)
+        {
+            // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+            string plainId = identity.GetPlainId();
+            if (plainId != string.Empty)
+                steamId = plainId;
+        }
+        manager.OnParticipantDisconnected(steamId);
+#else
+        DayZGame game = GetGame();
+        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
+        if (game && this == PlayerBase.Cast(game.GetPlayer()))
+        {
+            NexoDM_HudData data = NexoDM_HudData.Get();
+            if (data)
+                data.Reset();
+        }
+#endif
+    }
+
     // R2: PlayerBase.EEKilled(Object) in scripts/4_world/entities/manbase/playerbase.c:1183.
     override void EEKilled(Object killer)
     {
@@ -353,9 +404,17 @@ modded class PlayerBase
         // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57.
         rpc.Write(payload);
         // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
-        // guaranteed = false: the next 1 s sample replaces a drop. Owner only.
-        rpc.Send(this, NexoDM_RPC.HUD_VITALS, false, identity);
+        // Delta-only: a lost packet is not repeated, so delivery is guaranteed.
+        rpc.Send(this, NexoDM_RPC.HUD_VITALS, true, identity);
 #endif
+    }
+
+    void NexoDM_ResetVitalsSent()
+    {
+        m_NexoDM_SentHealth = -1;
+        m_NexoDM_SentBlood = -1;
+        m_NexoDM_SentWater = -1;
+        m_NexoDM_SentFood = -1;
     }
 
     protected int NexoDM_Percent(float value, float maxValue)
@@ -388,6 +447,12 @@ modded class PlayerBase
     protected void NexoDM_HandleHudVitalsRPC(ParamsReadContext ctx)
     {
 #ifndef SERVER
+        DayZGame vitalsGame = GetGame();
+        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
+        // A late packet on the corpse must not overwrite the new body's store.
+        if (!vitalsGame || this != PlayerBase.Cast(vitalsGame.GetPlayer()))
+            return;
+
         Param4<int, int, int, int> payload = new Param4<int, int, int, int>(0, 0, 0, 0);
         // R2: Serializer.Read(void) in scripts/1_core/proto/serializer.c:58.
         if (!ctx.Read(payload))
@@ -437,6 +502,12 @@ modded class PlayerBase
         Param4<int, int, int, int> payload = new Param4<int, int, int, int>(0, 0, 0, 0);
         if (!ctx.Read(payload))
             return;
+        if (payload.param1 < 0)
+            return;
+        if (payload.param2 < 0)
+            return;
+        if (payload.param3 < 0)
+            return;
         if (payload.param4 < 0)
             return;
 
@@ -465,6 +536,8 @@ modded class PlayerBase
             int kills;
             int deaths;
             if (!ctx.Read(name))
+                return;
+            if (name == string.Empty)
                 return;
             if (!ctx.Read(points))
                 return;

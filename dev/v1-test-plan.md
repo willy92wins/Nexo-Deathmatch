@@ -55,3 +55,20 @@ Hacen falta 2 clientes (A y B). La config tiene `RespawnDelay: 5`, `KillsToWin: 
 | 4.4 | Esperar junto al cadáver | Se borra a los max(10, RespawnDelay + 5) s, nunca antes de que acabe la cámara de B | log con hora de muerte y de borrado |
 | 4.5 | Escopeta (MP-133 o BK-43) en un loadout | La bala en recámara es letal, no `RubberSlug` | captura del arma |
 | 4.6 | B se desconecta inconsciente y su cuerpo muere | Su cadáver tampoco deja armas | captura |
+
+## F5 · HUD
+
+Antes de la prueba, Guillermo da el visto bueno al layout (`dev/mocks/hud-nexo-dayz.html` frente a la captura del juego).
+
+| # | Paso | Resultado esperado | Qué recoger |
+|---|---|---|---|
+| 5.1 | Entrar en una ronda | Bajo Salud, Sangre, Agua y Comida aparece su %, con la flecha de tendencia vanilla debajo; el HUD vanilla sigue igual | captura a 1080p y a 1440p |
+| 5.2 | Recibir daño, sangrar, beber y comer | El % baja o sube como mucho 1 s después y coincide con el valor real (consola de admin o log) | capturas antes y después |
+| 5.3 | Arma en manos | Abajo a la izquierda, el modelo 3D del arma con sus accesorios y su nombre; al guardarla se oculta; al cambiar de arma cambia | capturas |
+| 5.4 | Durante la ronda | Arriba, el tiempo restante y las bajas (de `KillsToWin`); el tiempo coincide con el del servidor ±1 s | captura y log `HUD_ROUND` |
+| 5.5 | Matar y morir | Cada baja sale en el killfeed (arriba, pequeño) y se va a los pocos segundos | captura |
+| 5.6 | Mantener T y soltar | Mientras se mantiene, el top 5 con tu fila resaltada (negro con texto rojo); al soltar desaparece; no se ve en ningún otro momento | captura |
+| 5.7 | Tras 4 bajas y 2 asistencias | 500 puntos en el HUD y en el log del servidor | log de servidor y de cliente |
+| 5.8 | Cámara del asesino, menú de pausa, fin de ronda | El HUD nuevo se oculta donde dice el mock y no queda nada pintado fuera de la ronda | capturas |
+| 5.9 | Con LBmaster Groups cargado, pulsar T | Comprobar si se lanza también el ping táctico de grupo (los dos usan kT) | captura |
+| 5.10 | Cliente en inglés | Sin claves `STR_` sueltas | captura |

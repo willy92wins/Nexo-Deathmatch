@@ -2,7 +2,7 @@ modded class MissionGameplay
 {
     protected ref NexoDM_HUD m_HUD;
     protected UAInput m_GG_ScoreInput;
-    protected UAInput m_NexoDM_Top5Input;
+    protected ref UAIDWrapper m_NexoDM_Top5Wrapper;
 
     // R2: MissionGameplay.OnInit() in scripts/5_mission/mission/missiongameplay.c:96.
     override void OnInit()
@@ -142,17 +142,28 @@ modded class MissionGameplay
     {
         if (!m_HUD)
             return;
-        if (!m_NexoDM_Top5Input)
+        if (!m_NexoDM_Top5Wrapper)
         {
             UAInputAPI api = GetUApi();
             if (!api)
                 return;
             string top5Name = "UANexoDMTop5";
-            m_NexoDM_Top5Input = api.GetInputByName(top5Name);
+            UAInput top5Input = api.GetInputByName(top5Name);
+            if (!top5Input)
+                return;
+            m_NexoDM_Top5Wrapper = top5Input.GetPersistentWrapper();
         }
-        if (!m_NexoDM_Top5Input)
+        if (!m_NexoDM_Top5Wrapper)
             return;
-        m_HUD.SetTop5Visible(m_NexoDM_Top5Input.LocalHold());
+        UAInput input = m_NexoDM_Top5Wrapper.InputP();
+        if (!input)
+            return;
+        bool held = input.LocalValue() > 0;
+        if (input.LocalPress())
+            held = true;
+        if (input.LocalRelease())
+            held = false;
+        m_HUD.SetTop5Visible(held);
     }
 
     protected void NexoDM_ToggleScoreboard()

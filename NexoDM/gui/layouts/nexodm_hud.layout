@@ -112,7 +112,7 @@ FrameWidgetClass HudRoot {
      hexactsize 0
      vexactsize 0
      ignorepointer 1
-     text "#2"
+     text ""
      color 1 1 1 1
      font "gui/fonts/sdf_MetronLight24"
      "text halign" left
@@ -770,7 +770,7 @@ FrameWidgetClass HudRoot {
    }
   }
   FrameWidgetClass WeaponGroup {
-   position 0.05 0.80
+   position 0.05 0.60
    size 0.20 0.15
    hexactpos 0
    vexactpos 0
@@ -796,6 +796,7 @@ FrameWidgetClass HudRoot {
      hexactsize 0
      vexactsize 0
      ignorepointer 1
+     "force flip enable" 1
     }
     TextWidgetClass WeaponName {
      position 0.52 0.08
@@ -826,8 +827,8 @@ FrameWidgetClass HudRoot {
      "text valign" center
     }
     TextWidgetClass WeaponMagLabel {
-     position 0.52 0.70
-     size 0.45 0.22
+     position 0.52 0.64
+     size 0.45 0.16
      hexactpos 0
      vexactpos 0
      hexactsize 0
@@ -861,6 +862,17 @@ FrameWidgetClass HudRoot {
     }
    }
   }
+  FrameWidgetClass VitalsFrame {
+   position 0 0
+   size 0.9 0.9
+   halign center_ref
+   valign center_ref
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   visible 1
+   {
   FrameWidgetClass VitalsGroup {
    clipchildren 0
    position 0 0
@@ -871,10 +883,12 @@ FrameWidgetClass HudRoot {
    vexactpos 1
    hexactsize 1
    vexactsize 1
+   fixaspect fixwidth
+   priority 100
    visible 0
    {
     TextWidgetClass HealthPct {
-     position 0 59
+     position 0 9
      size 35 14
      halign right_ref
      valign bottom_ref
@@ -890,7 +904,7 @@ FrameWidgetClass HudRoot {
      "text valign" center
     }
     ImageWidgetClass HealthTrendUp {
-     position 6 74
+     position 6 1
      size 22 7
      halign right_ref
      valign bottom_ref
@@ -904,9 +918,11 @@ FrameWidgetClass HudRoot {
      image0 "set:dayz_gui image:iconArrowUp1"
      mode blend
      "src alpha" 1
+     "clamp mode" clamp
+     "flip v" 1
     }
     ImageWidgetClass HealthTrendDown {
-     position 6 74
+     position 6 1
      size 22 7
      halign right_ref
      valign bottom_ref
@@ -917,12 +933,14 @@ FrameWidgetClass HudRoot {
      ignorepointer 1
      visible 0
      color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowDown1"
+     image0 "set:dayz_gui image:iconArrowUp1"
      mode blend
      "src alpha" 1
+     "clamp mode" clamp
+     "flip v" 0
     }
     TextWidgetClass BloodPct {
-     position 43 59
+     position 43 9
      size 35 14
      halign right_ref
      valign bottom_ref
@@ -938,7 +956,7 @@ FrameWidgetClass HudRoot {
      "text valign" center
     }
     ImageWidgetClass BloodTrendUp {
-     position 49 74
+     position 49 1
      size 22 7
      halign right_ref
      valign bottom_ref
@@ -952,9 +970,11 @@ FrameWidgetClass HudRoot {
      image0 "set:dayz_gui image:iconArrowUp1"
      mode blend
      "src alpha" 1
+     "clamp mode" clamp
+     "flip v" 1
     }
     ImageWidgetClass BloodTrendDown {
-     position 49 74
+     position 49 1
      size 22 7
      halign right_ref
      valign bottom_ref
@@ -965,12 +985,14 @@ FrameWidgetClass HudRoot {
      ignorepointer 1
      visible 0
      color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowDown1"
+     image0 "set:dayz_gui image:iconArrowUp1"
      mode blend
      "src alpha" 1
+     "clamp mode" clamp
+     "flip v" 0
     }
     TextWidgetClass FoodPct {
-     position 139 59
+     position 139 9
      size 35 14
      halign right_ref
      valign bottom_ref
@@ -986,7 +1008,7 @@ FrameWidgetClass HudRoot {
      "text valign" center
     }
     ImageWidgetClass FoodTrendUp {
-     position 145 74
+     position 145 1
      size 22 7
      halign right_ref
      valign bottom_ref
@@ -1000,9 +1022,11 @@ FrameWidgetClass HudRoot {
      image0 "set:dayz_gui image:iconArrowUp1"
      mode blend
      "src alpha" 1
+     "clamp mode" clamp
+     "flip v" 1
     }
     ImageWidgetClass FoodTrendDown {
-     position 145 74
+     position 145 1
      size 22 7
      halign right_ref
      valign bottom_ref
@@ -1013,12 +1037,14 @@ FrameWidgetClass HudRoot {
      ignorepointer 1
      visible 0
      color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowDown1"
+     image0 "set:dayz_gui image:iconArrowUp1"
      mode blend
      "src alpha" 1
+     "clamp mode" clamp
+     "flip v" 0
     }
     TextWidgetClass WaterPct {
-     position 182 59
+     position 182 9
      size 35 14
      halign right_ref
      valign bottom_ref
@@ -1034,7 +1060,7 @@ FrameWidgetClass HudRoot {
      "text valign" center
     }
     ImageWidgetClass WaterTrendUp {
-     position 188 74
+     position 188 1
      size 22 7
      halign right_ref
      valign bottom_ref
@@ -1048,9 +1074,11 @@ FrameWidgetClass HudRoot {
      image0 "set:dayz_gui image:iconArrowUp1"
      mode blend
      "src alpha" 1
+     "clamp mode" clamp
+     "flip v" 1
     }
     ImageWidgetClass WaterTrendDown {
-     position 188 74
+     position 188 1
      size 22 7
      halign right_ref
      valign bottom_ref
@@ -1061,11 +1089,14 @@ FrameWidgetClass HudRoot {
      ignorepointer 1
      visible 0
      color 0.8627 0.8627 0.8627 1
-     image0 "set:dayz_gui image:iconArrowDown1"
+     image0 "set:dayz_gui image:iconArrowUp1"
      mode blend
      "src alpha" 1
+     "clamp mode" clamp
+     "flip v" 0
     }
    }
+  }
   }
 
  }

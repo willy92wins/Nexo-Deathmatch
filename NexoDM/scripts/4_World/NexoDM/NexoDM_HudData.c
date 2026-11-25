@@ -105,11 +105,59 @@ class NexoDM_HudData
         return m_Food;
     }
 
+    void Reset()
+    {
+        m_HasVitals = false;
+        m_Health = 0;
+        m_Blood = 0;
+        m_Water = 0;
+        m_Food = 0;
+        m_HasRound = false;
+        m_RoundActive = false;
+        m_RoundSecondsAtRecv = 0;
+        m_RoundRecvMs = 0;
+        m_KillsToWin = 0;
+        m_HasSelf = false;
+        m_Points = 0;
+        m_Kills = 0;
+        m_Deaths = 0;
+        m_Rank = 0;
+        if (m_Top)
+            m_Top.Clear();
+        if (m_KillsFeed)
+            m_KillsFeed.Clear();
+    }
+
+    protected void ClearMatchStats()
+    {
+        m_HasVitals = false;
+        m_Health = 0;
+        m_Blood = 0;
+        m_Water = 0;
+        m_Food = 0;
+        m_HasSelf = false;
+        m_Points = 0;
+        m_Kills = 0;
+        m_Deaths = 0;
+        m_Rank = 0;
+        if (m_Top)
+            m_Top.Clear();
+        if (m_KillsFeed)
+            m_KillsFeed.Clear();
+    }
+
     void SetRound(int secondsLeft, int killsToWin, bool active)
     {
         bool wasActive = m_RoundActive;
+        int localLeft = GetRoundSecondsLeft();
+        bool newRound = false;
         if (active && !wasActive)
-            m_KillsFeed.Clear();
+            newRound = true;
+        // Missed the inactive packet: a jump upward in the clock is a new round, not a resync.
+        if (active && wasActive && secondsLeft > localLeft + 2)
+            newRound = true;
+        if (!active || newRound)
+            ClearMatchStats();
 
         m_HasRound = true;
         m_RoundActive = active;

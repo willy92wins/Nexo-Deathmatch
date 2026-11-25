@@ -246,9 +246,9 @@ class NexoDM_RoundManager : Managed
             // Winner announce must run while entries still exist; ReturnToIdle
             // clears them 0.1s after ScheduleIdleReset below.
             AnnounceWinner(reason, winnerSteamId);
-            // Final top 5 while entries are still participants (a throttled kill must not flush after reset).
-            if (m_HudTop5Pending)
-                FlushHudTop5();
+            // Drop the deferred flush before sending the final table, so it cannot fire in the next round.
+            CancelHudTop5Flush();
+            FlushHudTop5();
             // Round is already ENDED: remaining 0, active no. Participants still have their role.
             BroadcastHudRound();
         }
@@ -327,7 +327,13 @@ class NexoDM_RoundManager : Managed
             return false;
         if (e.steamId == string.Empty)
             return false;
-        return FindPlayerBySteamId(e.steamId) != null;
+        PlayerBase online = FindPlayerBySteamId(e.steamId);
+        if (!online)
+            return false;
+        // R2: PlayerBase.IsPlayerDisconnected() in scripts/4_world/entities/manbase/playerbase.c:2638.
+        if (online.IsPlayerDisconnected())
+            return false;
+        return true;
 #else
         return false;
 #endif
@@ -475,8 +481,8 @@ class NexoDM_RoundManager : Managed
         if (GetGame())
             nowMs = GetGame().GetTime();
         m_RoundEndsAtMs = nowMs + (roundDuration * 1000);
+        CancelHudTop5Flush();
         m_HudTop5Count = -1;
-        m_HudTop5Pending = false;
         m_HudTop5LastSendMs = nowMs - 1000;
 
         int hudIndex = 0;
@@ -488,8 +494,10 @@ class NexoDM_RoundManager : Managed
             PlayerBase hudPlayer = FindPlayerBySteamId(hudEntry.steamId);
             if (!hudPlayer || !hudPlayer.IsAlive())
                 continue;
+            hudPlayer.NexoDM_ResetVitalsSent();
             SendHudJoinState(hudPlayer, hudEntry);
         }
+        BroadcastHudSelf();
 #endif
     }
 
@@ -1019,6 +1027,7 @@ class NexoDM_RoundManager : Managed
 
         // F3 p8: a fresh character born during the freeze window stays frozen until EndFreeze.
         ApplyFreezeToPlayer(player);
+        player.NexoDM_ResetVitalsSent();
         SendHudJoinState(player, entry);
 
         string respawnDetail = "participant respawn equipped";
@@ -1224,7 +1233,9 @@ class NexoDM_RoundManager : Managed
             if (activeEntry.role == NexoDM_Role.PARTICIPANT)
             {
                 ApplyFreezeToPlayer(player);
+                player.NexoDM_ResetVitalsSent();
                 SendHudJoinState(player, activeEntry);
+                BroadcastHudSelf();
             }
         }
 #endif
@@ -1278,7 +1289,9 @@ class NexoDM_RoundManager : Managed
                 }
                 // F3 p8: reconnect during the freeze window freezes like everyone else.
                 ApplyFreezeToPlayer(player);
+                player.NexoDM_ResetVitalsSent();
                 SendHudJoinState(player, entry);
+                BroadcastHudSelf();
             }
             return;
         }
@@ -1297,7 +1310,9 @@ class NexoDM_RoundManager : Managed
             ApplyRoleToPlayer(player, entry.role);
             // F3 p8: new participant via reconnect during the freeze window freezes too.
             ApplyFreezeToPlayer(player);
+            player.NexoDM_ResetVitalsSent();
             SendHudJoinState(player, entry);
+            BroadcastHudSelf();
             return;
         }
 
@@ -2604,13 +2619,52 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
-    protected void SendHudSelfForSteam(string steamId)
+    void OnParticipantDisconnected(string steamId)
     {
 #ifdef SERVER
+        if (!CanMutateState())
+            return;
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+        if (steamId == string.Empty)
+            return;
+
         NexoDM_PlayerEntry entry = GetEntry(steamId);
         if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
             return;
-        SendHudSelf(FindPlayerBySteamId(steamId), entry);
+
+        // IsEntryOnline now skips IsPlayerDisconnected, so top 5 and ranks drop this player.
+        RequestHudTop5();
+        BroadcastHudSelf();
+#endif
+    }
+
+    protected void CancelHudTop5Flush()
+    {
+#ifdef SERVER
+        m_HudTop5Pending = false;
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+        // R2: ScriptCallQueue.Remove(func) in scripts/2_gamelib/tools.c:65.
+        game.GetCallQueue(CALL_CATEGORY_GAMEPLAY).Remove(FlushHudTop5);
+#endif
+    }
+
+    protected void BroadcastHudSelf()
+    {
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            if (!IsEntryOnline(entry))
+                continue;
+            SendHudSelf(FindPlayerBySteamId(entry.steamId), entry);
+        }
 #endif
     }
 
@@ -2638,20 +2692,8 @@ class NexoDM_RoundManager : Managed
 
         string weaponClass = HudWeaponClass(killerObject, creditedKiller, victimEntry);
         BroadcastHudKill(killerName, victimName, weaponClass);
-
-        SendHudSelfForSteam(victimEntry.steamId);
-        if (killerId != string.Empty && killerId != victimEntry.steamId)
-            SendHudSelfForSteam(killerId);
-        if (victimEntry.damagedBy)
-        {
-            int index = 0;
-            for (index = 0; index < victimEntry.damagedBy.Count(); index = index + 1)
-            {
-                string attackerId = victimEntry.damagedBy.Get(index);
-                if (attackerId != killerId && attackerId != victimEntry.steamId)
-                    SendHudSelfForSteam(attackerId);
-            }
-        }
+        // Points changed: every participant's rank may have moved.
+        BroadcastHudSelf();
         RequestHudTop5();
 #endif
     }
