@@ -43,6 +43,16 @@ class NexoDM_Constants
     // routing only does post-birth stat reset + HUD sync, not teleport/equip. ms.
     static const int FRESH_CHAR_ROUTE_DELAY_MS = 0;
 
+    // F7 short KO: on the server, this long after unconsciousness starts the shock is raised to
+    // max so vanilla wakes the player (vanilla still enforces its own ~2 s minimum). Code-only
+    // constant: no config key.
+    static const int KO_WAKE_DELAY_MS = 1000;
+    // F7 correction 1: while still unconscious, re-raise shock to max this often after the first
+    // raise (a later hit can drop shock again before vanilla wakes the player), but never past
+    // KO_WAKE_MAX_MS from the unconsciousness start, so the loop always terminates. Code-only.
+    static const int KO_WAKE_REPEAT_MS = 500;
+    static const int KO_WAKE_MAX_MS = 10000;
+
     // Option A downed-kill credit: when a participant dies with NO killer reported (scripted SetHealth(0)
     // of an unconscious player choosing Respawn via OnClientRespawnEvent, or a bleed-out), OnPlayerKilled
     // credits the last participant who damaged them IF the hit was within this window - so a stale hit

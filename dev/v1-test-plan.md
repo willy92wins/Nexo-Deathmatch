@@ -83,3 +83,15 @@ Diseño aprobado por Guillermo el 25-nov a las 18:37 (`dev/mocks/hud-nexo-dayz.h
 | 6.4 | Corromper `leaderboard.json` a mano (texto basura) y arrancar | Se aparta como `.broken`, aviso en el log, se recupera del `.bak` si existe (si no, vacío) y sin crash | log, ficheros de la carpeta |
 | 6.5 | Al acabar cada ronda | El top 10 global aparece 10 s con el estilo del top 5, tu fila resaltada, y coincide con el JSON; se oculta si empieza otra ronda antes | captura y JSON |
 | 6.6 | `MinPlayersToScore: 0` | La ronda no arranca: `E_CFG_MIN_PLAYERS` en el log | log |
+
+## F7 · KO corto
+
+Decisión de Guillermo del 25-nov a las 21:57: opción (a). El KO dura unos 2 s, sin saltarse la protección vanilla de 2 s.
+
+| # | Paso | Resultado esperado | Qué recoger |
+|---|---|---|---|
+| 7.1 | Dejar KO a B (por ejemplo, con munición de goma o un golpe de culata) | B está consciente a ≤ 2,5 s del inicio | log `[NexoDM][KO]` con la hora de inicio y la de la subida de shock; vídeo o capturas con hora |
+| 7.2 | Darle otro golpe a B entre 1 y 2 s de KO | Aun así se levanta antes de unos 3 s | log |
+| 7.3 | Matar a B mientras está KO | Muere con normalidad; la cámara del asesino y el respawn funcionan | captura y log |
+| 7.4 | B se desconecta estando KO | No se despierta; se aplica la muerte vanilla por combat-log | log del servidor |
+| 7.5 | Revisar el log del servidor | Sin errores de script | `script_*.log` |
