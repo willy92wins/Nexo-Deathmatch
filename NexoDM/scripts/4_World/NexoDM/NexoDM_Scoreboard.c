@@ -9,6 +9,7 @@ class NexoDM_ScoreRow : Managed
     int kills;
     int assists;
     int deaths;
+    int points;
 }
 
 class NexoDM_Scoreboard extends UIScriptedMenu
@@ -122,8 +123,9 @@ class NexoDM_Scoreboard extends UIScriptedMenu
         string kName = "KText";
         string aName = "AText";
         string dName = "DText";
+        string pName = "PText";
 
-        // Rows arrive ranked best-first (kills, then assists, then fewer deaths).
+        // Rows arrive ranked best-first (points, then fewer deaths, then earlier score).
         int index = 0;
         for (index = 0; index < rows.Count(); index = index + 1)
         {
@@ -146,6 +148,8 @@ class NexoDM_Scoreboard extends UIScriptedMenu
             SetRowText(row, aName, aStr);
             string dStr = data.deaths.ToString();
             SetRowText(row, dName, dStr);
+            string pStr = data.points.ToString();
+            SetRowText(row, pName, pStr);
 
             m_Rows.Insert(row);
         }

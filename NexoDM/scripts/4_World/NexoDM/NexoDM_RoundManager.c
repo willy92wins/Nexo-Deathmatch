@@ -5,6 +5,8 @@ class NexoDM_PlayerEntry : Managed
     int kills;
     int assists;
     int deaths;
+    int points;
+    int lastPointsChangeMs;
     ref set<string> damagedBy;
     bool lastDamageWasKnife;
     int lastKnifeHitTimeMs;     // S5.5 KB1-B obs
@@ -19,6 +21,8 @@ class NexoDM_PlayerEntry : Managed
         kills = 0;
         assists = 0;
         deaths = 0;
+        points = 0;
+        lastPointsChangeMs = 0;
         damagedBy = new set<string>();
         lastDamageWasKnife = false;
         lastKnifeHitTimeMs = 0;     // S5.5 KB1-B obs
@@ -52,6 +56,9 @@ class NexoDM_RoundManager : Managed
     // post-creation teleport+wipe+equip path that desynced the loadout to observers.
     protected ref set<string> m_GG_BirthEquipped;
     protected int m_SpawnRoundRobinIdx;
+    protected int m_ActiveMapIndex;
+    protected int m_PreviousMapIndex;
+    protected bool m_FreezeActive;
 
     void NexoDM_RoundManager()
     {
@@ -65,6 +72,9 @@ class NexoDM_RoundManager : Managed
         m_WarnLog = new map<string, int>;
         m_GG_BirthEquipped = new set<string>();
         m_SpawnRoundRobinIdx = -1;
+        m_ActiveMapIndex = 0;
+        m_PreviousMapIndex = -1;
+        m_FreezeActive = false;
 #endif
     }
 
@@ -120,15 +130,19 @@ class NexoDM_RoundManager : Managed
         // re-arms the unsupervised loop when the round is over.
         StopTimer(m_AutostartTimer);
 
+        // F3 p1: load into a local so a failed Load() does not clobber a previously loaded
+        // config; ScheduleAutostartIfEnabled below still needs GetAutostart() to re-arm.
         // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:80.
-        m_Config = NexoDM_Config.Load();
-        if (!m_Config)
+        NexoDM_Config loadedConfig = NexoDM_Config.Load();
+        if (!loadedConfig)
         {
             string loadMessage = "start rejected: config load failed";
             LogRound(loadMessage);
             m_State = NexoDM_State.IDLE;
+            ScheduleAutostartIfEnabled("retry after rejected start");
             return;
         }
+        m_Config = loadedConfig;
 
         // R2: NexoDM_Config.Validate() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:150.
         if (!m_Config.Validate())
@@ -136,6 +150,7 @@ class NexoDM_RoundManager : Managed
             string validateMessage = "start rejected: config validation failed";
             LogRound(validateMessage);
             m_State = NexoDM_State.IDLE;
+            ScheduleAutostartIfEnabled("retry after rejected start");
             return;
         }
 
@@ -145,6 +160,7 @@ class NexoDM_RoundManager : Managed
             string presetMessage = "start rejected: config preset missing";
             LogRound(presetMessage);
             m_State = NexoDM_State.IDLE;
+            ScheduleAutostartIfEnabled("retry after rejected start");
             return;
         }
 
@@ -190,13 +206,45 @@ class NexoDM_RoundManager : Managed
         StopTimer(m_FreezeTimer);
 
         m_State = NexoDM_State.ENDED;
+        m_FreezeActive = false;
         RevertFreezeIfApplied();
+
+        // F3 p6: choose the next round's active map now; BeginRound of the next round
+        // teleports/equips everyone on m_ActiveMapIndex.
+        if (wasActive && m_Config)
+        {
+            // R2: NexoDM_Config.GetValidMaps() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:327.
+            array<ref NexoDM_ParsedMap> validMaps = m_Config.GetValidMaps();
+            if (validMaps && validMaps.Count() > 0)
+            {
+                int mapCount = validMaps.Count();
+                int finishedMapIndex = m_ActiveMapIndex;
+                int oldPreviousIndex = m_PreviousMapIndex;
+                m_ActiveMapIndex = PickNextMapIndex(mapCount, finishedMapIndex, oldPreviousIndex);
+                m_PreviousMapIndex = finishedMapIndex;
+            }
+        }
 
         if (wasActive)
         {
             // Winner announce must run while entries still exist; ReturnToIdle
             // clears them 0.1s after ScheduleIdleReset below.
             AnnounceWinner(reason, winnerSteamId);
+        }
+
+        // #6: strip weapons/mags/ammo from every connected participant now, so
+        // nothing is kept through IDLE (BeginRound ground cleanup stays as-is).
+        EnsureCollections();
+        int wipeIndex = 0;
+        for (wipeIndex = 0; wipeIndex < m_PlayerEntries.Count(); wipeIndex = wipeIndex + 1)
+        {
+            NexoDM_PlayerEntry wipeEntry = m_PlayerEntries.GetElement(wipeIndex);
+            if (!wipeEntry || wipeEntry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            string wipeSteamId = m_PlayerEntries.GetKey(wipeIndex);
+            PlayerBase wipePlayer = FindPlayerBySteamId(wipeSteamId);
+            if (wipePlayer)
+                WipeWeaponsOnly(wipePlayer);
         }
 
         // Drop the synced participant role so the scoreboard gate closes with the round.
@@ -333,6 +381,9 @@ class NexoDM_RoundManager : Managed
         EnsureCollections();
         StopTimer(m_FreezeTimer);
 
+        // F3 p7: no weapon from the previous round survives on the ground of its arena.
+        CleanupPreviousMapGroundWeapons();
+
         int index = 0;
         for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
         {
@@ -386,6 +437,7 @@ class NexoDM_RoundManager : Managed
             }
         }
 
+        m_FreezeActive = true;
         float freezeSeconds = 10.0;
         string callbackName = "EndFreeze";
         // R2: Timer.Run(float,Managed,string,Param,bool) in scripts/3_game/tools/tools.c:595.
@@ -560,17 +612,32 @@ class NexoDM_RoundManager : Managed
             }
         }
 
+        bool roundEndsByKills = false;
+        string winningKillerId = string.Empty;
+        PlayerBase creditedKiller = null;
         if (killerPlayer && killerId != string.Empty && killerId != victimId)
         {
             NexoDM_PlayerEntry killerEntry = GetEntry(killerId);
             if (killerEntry && killerEntry.role == NexoDM_Role.PARTICIPANT)
             {
                 killerEntry.kills = killerEntry.kills + 1;
+                AddPoints(killerEntry, NexoDM_Constants.POINTS_PER_KILL);
+                creditedKiller = killerPlayer;
+                winningKillerId = killerId;
                 string killDetail = "participant kill recorded";
                 LogRule(NexoDM_Constants.RULE_KILL_RECORDED, killDetail);
                 AwardAssists(victimEntry, killerId);
+
+                // F3 p4: first to KillsToWin ends the round at once.
+                if (EnsureConfig() && killerEntry.kills >= m_Config.GetKillsToWin())
+                    roundEndsByKills = true;
             }
         }
+
+        // F3 p3: tell the victim who killed them (credited killer, incl. fallbacks above;
+        // null/self -> 0,0 on the wire). Skipped on the round-ending kill: no respawn follows.
+        if (!roundEndsByKills)
+            SendKillerCam(victim, creditedKiller);
 
         // S5.5 KB1-A: consume-once - evita un credito stale entre kill y respawn (P2-2).
         victimEntry.lastDamageWasKnife = false;
@@ -595,16 +662,114 @@ class NexoDM_RoundManager : Managed
         // Final cleanup: delete the corpse and re-sweep stray weapons once physics has settled.
         // Runs regardless of later round-state changes (arena hygiene, no lootable round weapons).
         GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathFinal, 10000, false, victim, deathPos);
+
+        // F3 p4: deferred to the end so death cleanup above is already scheduled.
+        if (roundEndsByKills)
+        {
+            string killsReason = "kills_to_win";
+            EndRound(killsReason, winningKillerId);
+        }
+#endif
+    }
+
+    // F3 p7: delete loose firearms/mags/ammo on the ground of the PREVIOUS round's arena.
+    // Zone = bounding box of that map's spawn points + 50 m, queried as centre + radius
+    // (half the box diagonal + 50) through the same vanilla query the death sweep uses.
+    void CleanupPreviousMapGroundWeapons()
+    {
+#ifdef SERVER
+        if (!m_Config)
+            return;
+
+        if (m_PreviousMapIndex < 0)
+            return;
+
+        // R2: NexoDM_Config.GetValidMaps() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:327.
+        array<ref NexoDM_ParsedMap> maps = m_Config.GetValidMaps();
+        if (!maps || m_PreviousMapIndex >= maps.Count())
+            return;
+
+        NexoDM_ParsedMap prevMap = maps.Get(m_PreviousMapIndex);
+        if (!prevMap || !prevMap.SpawnGroups)
+            return;
+
+        float minX = 0.0;
+        float maxX = 0.0;
+        float minZ = 0.0;
+        float maxZ = 0.0;
+        float sumY = 0.0;
+        int pointTotal = 0;
+        int gIdx = 0;
+        for (gIdx = 0; gIdx < prevMap.SpawnGroups.Count(); gIdx = gIdx + 1)
+        {
+            NexoDM_ParsedSpawnGroup grp = prevMap.SpawnGroups.Get(gIdx);
+            if (!grp || !grp.Points)
+                continue;
+            int pIdx = 0;
+            for (pIdx = 0; pIdx < grp.Points.Count(); pIdx = pIdx + 1)
+            {
+                vector pt = grp.Points.Get(pIdx);
+                if (pointTotal == 0)
+                {
+                    minX = pt[0];
+                    maxX = pt[0];
+                    minZ = pt[2];
+                    maxZ = pt[2];
+                }
+                else
+                {
+                    if (pt[0] < minX)
+                        minX = pt[0];
+                    if (pt[0] > maxX)
+                        maxX = pt[0];
+                    if (pt[2] < minZ)
+                        minZ = pt[2];
+                    if (pt[2] > maxZ)
+                        maxZ = pt[2];
+                }
+                sumY = sumY + pt[1];
+                pointTotal = pointTotal + 1;
+            }
+        }
+
+        if (pointTotal == 0)
+            return;
+
+        float centerX = (minX + maxX) * 0.5;
+        float centerZ = (minZ + maxZ) * 0.5;
+        float centerY = sumY / pointTotal;
+        // R2: Math.Sqrt(float) in scripts/1_core/proto/enmath.c:305.
+        float halfDiag = Math.Sqrt(((maxX - minX) * (maxX - minX)) + ((maxZ - minZ) * (maxZ - minZ))) * 0.5;
+        float radius = halfDiag + 50.0;
+        // R2: Vector(float,float,float) in scripts/1_core/proto/enmath3d.c:18.
+        vector center = Vector(centerX, centerY, centerZ);
+
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        array<Object> objects = new array<Object>();
+        array<CargoBase> proxyCargos = new array<CargoBase>();
+        // R2: CGame.GetObjectsAtPosition3D(vector,float,out array<Object>,out array<CargoBase>) in scripts/3_game/global/game.c:930.
+        game.GetObjectsAtPosition3D(center, radius, objects, proxyCargos);
+
+        int objIndex = 0;
+        for (objIndex = 0; objIndex < objects.Count(); objIndex = objIndex + 1)
+        {
+            ItemBase item = ItemBase.Cast(objects.Get(objIndex));
+            // R2: EntityAI.GetHierarchyRootPlayer() in scripts/3_game/entities/entityai.c:877.
+            if (item && !item.GetHierarchyRootPlayer() && ShouldDeleteWeaponLoadoutItem(item))
+            {
+                // R2: CGame.ObjectDelete(Object) in scripts/3_game/global/game.c:705.
+                game.ObjectDelete(item);
+            }
+        }
 #endif
     }
 
     // Death-site sweep: delete loose firearms/mags/ammo dropped on the ground near the death
     // (the knife and non-weapon loot are kept). Called ~2s after a participant death so a
-    // weapon released from the hands has settled. The corpse's own weapons are already stripped
-    // by WipeWeaponsOnly at kill time. Radius 5 m: the dying character's momentum flings the
-    // hands weapon well past the old 2 m sphere (in-game test 2026-06-11: strays survived and
-    // were lootable). Only ownerless gun/mag/ammo match, so the wide sphere cannot hit gear
-    // carried by living players.
+    // weapon released from the hands has settled. Radius 5 m (in-game test 2026-06-11).
     void CleanupDeathSite(vector pos)
     {
 #ifdef SERVER
@@ -688,6 +853,7 @@ class NexoDM_RoundManager : Managed
             if (attackerEntry && attackerEntry.role == NexoDM_Role.PARTICIPANT)
             {
                 attackerEntry.assists = attackerEntry.assists + 1;
+                AddPoints(attackerEntry, NexoDM_Constants.POINTS_PER_ASSIST);
                 string assistDetail = "participant assist recorded";
                 LogRule(NexoDM_Constants.RULE_ASSIST_RECORDED, assistDetail);
             }
@@ -757,6 +923,9 @@ class NexoDM_RoundManager : Managed
         entry.lastKnifeKillerId = string.Empty;
         entry.lastAttackerId = string.Empty;
         entry.lastAttackerTimeMs = 0;
+
+        // F3 p8: a fresh character born during the freeze window stays frozen until EndFreeze.
+        ApplyFreezeToPlayer(player);
 
         string respawnDetail = "participant respawn equipped";
         LogRule(NexoDM_Constants.RULE_RESPAWN_EQUIPPED, respawnDetail);
@@ -928,6 +1097,9 @@ class NexoDM_RoundManager : Managed
             }
 
             ApplyRoleToPlayer(player, activeEntry.role);
+            // F3 p8: late join during the freeze window freezes like everyone else.
+            if (activeEntry.role == NexoDM_Role.PARTICIPANT)
+                ApplyFreezeToPlayer(player);
         }
 #endif
     }
@@ -941,6 +1113,16 @@ class NexoDM_RoundManager : Managed
         if (!identity || !player)
             return;
 
+        // #9: a player frozen at disconnect stays frozen in the reconnect cache;
+        // if no freeze is active now, thaw them (freeze paths below re-freeze if needed).
+        if (!m_FreezeActive)
+        {
+            // R2: Entity.DisableSimulation(bool) in scripts/3_game/entities/entity.c:3.
+            player.DisableSimulation(false);
+            // R2: Object.SetAllowDamage(bool) in scripts/3_game/entities/object.c:1192.
+            player.SetAllowDamage(true);
+        }
+
         // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
         string steamId = identity.GetPlainId();
         if (steamId == string.Empty)
@@ -949,6 +1131,15 @@ class NexoDM_RoundManager : Managed
         NexoDM_PlayerEntry entry = GetEntry(steamId);
         if (entry)
         {
+            // F3 p8: reconnect in the EndRound->ReturnToIdle window (state ENDED, entries
+            // not yet cleared) must end with role NONE, not the stale PARTICIPANT.
+            if (m_State == NexoDM_State.ENDED || m_State == NexoDM_State.IDLE)
+            {
+                entry.role = NexoDM_Role.NONE;
+                ApplyRoleToPlayer(player, NexoDM_Role.NONE);
+                return;
+            }
+
             ApplyRoleToPlayer(player, entry.role);
             if (entry.role == NexoDM_Role.PARTICIPANT && m_State == NexoDM_State.ACTIVE)
             {
@@ -958,6 +1149,8 @@ class NexoDM_RoundManager : Managed
                     WipeInventory(player);
                     EquipPlayer(player, entry.role);
                 }
+                // F3 p8: reconnect during the freeze window freezes like everyone else.
+                ApplyFreezeToPlayer(player);
             }
             return;
         }
@@ -974,6 +1167,8 @@ class NexoDM_RoundManager : Managed
                 EquipPlayer(player, entry.role);
             }
             ApplyRoleToPlayer(player, entry.role);
+            // F3 p8: new participant via reconnect during the freeze window freezes too.
+            ApplyFreezeToPlayer(player);
             return;
         }
 
@@ -1009,7 +1204,7 @@ class NexoDM_RoundManager : Managed
     }
 
     // G3-G5: answer a client's SCOREBOARD_REQ with the participant table (server-authoritative).
-    // Serialized as count + per-row [name, kills, assists, deaths]; the client
+    // Serialized as count + per-row [name, kills, assists, deaths, points]; the client
     // reads the same order in NexoDM_PlayerBase.NexoDM_HandleScoreboardDataRPC.
     void OnScoreboardRequest(PlayerIdentity sender)
     {
@@ -1085,16 +1280,75 @@ class NexoDM_RoundManager : Managed
             int rKills = entry.kills;
             int rAssists = entry.assists;
             int rDeaths = entry.deaths;
+            int rPoints = entry.points;
 
             rpc.Write(name);
             rpc.Write(rKills);
             rpc.Write(rAssists);
             rpc.Write(rDeaths);
+            rpc.Write(rPoints);
         }
 
         // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
         rpc.Send(target, NexoDM_RPC.SCOREBOARD_DATA, true, sender);
 #endif
+    }
+
+    // F3 p6: pure map rotation. Depends only on its arguments and Math.RandomInt.
+    // count>=3: random index that is neither current nor previous; count==2: the other;
+    // count<=1: the same (0). Out-of-range current (first round) picks any index.
+    int PickNextMapIndex(int count, int current, int previous)
+    {
+        if (count <= 1)
+            return 0;
+
+        if (current < 0 || current >= count)
+        {
+            // R2: Math.RandomInt(int,int) max-exclusive in scripts/1_core/proto/enmath.c:38.
+            return Math.RandomInt(0, count);
+        }
+
+        if (count == 2)
+        {
+            if (current == 0)
+                return 1;
+            return 0;
+        }
+
+        int picked = current;
+        int guard = 0;
+        while (guard < 64)
+        {
+            // R2: Math.RandomInt(int,int) max-exclusive in scripts/1_core/proto/enmath.c:38.
+            picked = Math.RandomInt(0, count);
+            if (picked != current && picked != previous)
+                return picked;
+            guard = guard + 1;
+        }
+        // #7: deterministic fallback - first index distinct from current and previous.
+        int fallback = 0;
+        for (fallback = 0; fallback < count; fallback = fallback + 1)
+        {
+            if (fallback != current && fallback != previous)
+                return fallback;
+        }
+        return picked;
+    }
+
+    protected NexoDM_ParsedMap GetActiveMap()
+    {
+        if (!m_Config)
+            return null;
+
+        // R2: NexoDM_Config.GetValidMaps() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:327.
+        array<ref NexoDM_ParsedMap> maps = m_Config.GetValidMaps();
+        if (!maps || maps.Count() == 0)
+            return null;
+
+        int idx = m_ActiveMapIndex;
+        if (idx < 0 || idx >= maps.Count())
+            idx = 0;
+        return maps.Get(idx);
     }
 
     protected vector PickRandomSpawn()
@@ -1116,8 +1370,8 @@ class NexoDM_RoundManager : Managed
             return Vector(0, originY, 0);
         }
 
-        // F3: rotación de mapa. Until then the active arena is the first map of this world.
-        NexoDM_ParsedMap activeMap = maps.Get(0);
+        // F3 p6: the active arena is m_ActiveMapIndex (rotated in EndRound).
+        NexoDM_ParsedMap activeMap = GetActiveMap();
         if (!activeMap || !activeMap.SpawnGroups || activeMap.SpawnGroups.Count() == 0)
         {
             float emptyY = game.SurfaceY(0, 0);
@@ -1730,9 +1984,27 @@ class NexoDM_RoundManager : Managed
     void EndFreeze()
     {
 #ifdef SERVER
+        m_FreezeActive = false;
         SetFreezeForEntries(false);
         string message = "round freeze ended; entering live combat";
         LogRound(message);
+#endif
+    }
+
+    // F3 p8: a participant joining during the initial freeze is frozen/immune like the rest.
+    protected void ApplyFreezeToPlayer(PlayerBase player)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+        if (!m_FreezeActive)
+            return;
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+        // R2: Entity.DisableSimulation(bool) in scripts/3_game/entities/entity.c:3.
+        player.DisableSimulation(true);
+        // R2: Object.SetAllowDamage(bool) in scripts/3_game/entities/object.c:1192.
+        player.SetAllowDamage(false);
 #endif
     }
 
@@ -1814,17 +2086,30 @@ class NexoDM_RoundManager : Managed
         if (!CanMutateState())
             return;
 
-        if (!EnsureConfig())
-            return;
-
-        if (!m_Config.GetAutostart())
-            return;
-
         if (m_State != NexoDM_State.IDLE)
             return;
 
         EnsureTimers();
         StopTimer(m_AutostartTimer);
+
+        // F3 p1: config never loaded (Load() failed): arm a default-delay retry anyway.
+        // OnAutostartTimer re-checks GetAutostart() once a config loads, so this cannot
+        // start a round while Autostart is disabled.
+        if (!EnsureConfig())
+        {
+            float fallbackDelay = NexoDM_Constants.DEFAULT_AUTOSTART_DELAY_VALUE;
+            string fallbackCallback = "OnAutostartTimer";
+            // R2: Timer.Run(float,Managed,string,Param,bool) in scripts/3_game/tools/tools.c:595.
+            m_AutostartTimer.Run(fallbackDelay, this, fallbackCallback, NULL, false);
+            string fallbackMessage = "autostart armed with default delay (config unavailable) (";
+            fallbackMessage = fallbackMessage + reasonTag;
+            fallbackMessage = fallbackMessage + ")";
+            LogRound(fallbackMessage);
+            return;
+        }
+
+        if (!m_Config.GetAutostart())
+            return;
 
         int delaySeconds = m_Config.GetAutostartDelaySeconds();
         float delay = delaySeconds;
@@ -1852,6 +2137,20 @@ class NexoDM_RoundManager : Managed
             // A manually started round is in progress; its ReturnToIdle re-arms the loop.
             string busyMessage = "autostart skipped: round in progress";
             LogRound(busyMessage);
+            return;
+        }
+
+        // F3 p1: a default-delay retry armed while the config was unloadable must not
+        // start a round once a config loads with Autostart disabled.
+        if (!EnsureConfig())
+        {
+            ScheduleAutostartIfEnabled("retry after rejected start");
+            return;
+        }
+        if (!m_Config.GetAutostart())
+        {
+            string disabledMessage = "autostart skipped: disabled in config";
+            LogRound(disabledMessage);
             return;
         }
 
@@ -1920,19 +2219,71 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
+    // F3 p5: the instant of the last points change drives the final tiebreak (earlier wins).
+    protected void AddPoints(NexoDM_PlayerEntry entry, int amount)
+    {
+#ifdef SERVER
+        if (!entry)
+            return;
+        entry.points = entry.points + amount;
+        // R2: DayZGame.GetTime() in scripts/3_game/global/game.c:1510.
+        if (GetGame())
+            entry.lastPointsChangeMs = GetGame().GetTime();
+#endif
+    }
+
+    // F3 p3 (server): send the victim the credited killer's NetworkID + RespawnDelay.
+    // No credited killer (or self-kill) goes out as 0,0: the client films its own corpse.
+    protected void SendKillerCam(PlayerBase victim, PlayerBase killerPlayer)
+    {
+#ifdef SERVER
+        if (!victim)
+            return;
+
+        if (!EnsureConfig())
+            return;
+
+        PlayerIdentity victimIdentity = victim.GetIdentity();
+        if (!victimIdentity)
+            return;
+
+        int lo = 0;
+        int hi = 0;
+        if (killerPlayer && killerPlayer != victim)
+        {
+            // R2: Object.GetNetworkID(out int,out int) in scripts/3_game/entities/object.c:819.
+            killerPlayer.GetNetworkID(lo, hi);
+        }
+
+        int respawnDelay = m_Config.GetRespawnDelay();
+        ScriptRPC rpc = new ScriptRPC();
+        Param3<int, int, int> payload = new Param3<int, int, int>(lo, hi, respawnDelay);
+        // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57.
+        rpc.Write(payload);
+        // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
+        rpc.Send(victim, NexoDM_RPC.KILLER_CAM, true, victimIdentity);
+#endif
+    }
+
     protected bool IsBetterByTiebreak(NexoDM_PlayerEntry candidate, NexoDM_PlayerEntry current)
     {
-        // Tiebreak: more kills, then more assists, then fewer deaths.
-        if (candidate.kills != current.kills)
-            return candidate.kills > current.kills;
-
-        if (candidate.assists != current.assists)
-            return candidate.assists > current.assists;
+        // F3 p5: points desc, then fewer deaths, then earlier last points change.
+        if (candidate.points != current.points)
+            return candidate.points > current.points;
 
         if (candidate.deaths != current.deaths)
             return candidate.deaths < current.deaths;
 
-        return false;
+        int candidateTime = candidate.lastPointsChangeMs;
+        int currentTime = current.lastPointsChangeMs;
+        if (candidateTime == currentTime)
+            return false;
+        // 0 means "never scored": it loses to any real timestamp.
+        if (candidateTime == 0)
+            return false;
+        if (currentTime == 0)
+            return true;
+        return candidateTime < currentTime;
     }
 
     protected string GetPlayerName(string steamId)

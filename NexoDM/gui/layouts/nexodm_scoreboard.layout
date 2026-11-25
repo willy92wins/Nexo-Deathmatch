@@ -91,7 +91,7 @@ FrameWidgetClass BoardRoot {
        color 0.47 0.46 0.43 1
       }
       TextWidgetClass ColK {
-       position 0.78 0
+       position 0.70 0
        size 0.07 1
        hexactpos 0
        vexactpos 0
@@ -102,7 +102,7 @@ FrameWidgetClass BoardRoot {
        color 0.47 0.46 0.43 1
       }
       TextWidgetClass ColA {
-       position 0.86 0
+       position 0.78 0
        size 0.07 1
        hexactpos 0
        vexactpos 0
@@ -113,7 +113,7 @@ FrameWidgetClass BoardRoot {
        color 0.47 0.46 0.43 1
       }
       TextWidgetClass ColD {
-       position 0.93 0
+       position 0.86 0
        size 0.07 1
        hexactpos 0
        vexactpos 0
@@ -121,6 +121,17 @@ FrameWidgetClass BoardRoot {
        vexactsize 0
        ignorepointer 1
        text "D"
+       color 0.47 0.46 0.43 1
+      }
+     TextWidgetClass ColP {
+       position 0.93 0
+       size 0.07 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "PTS"
        color 0.47 0.46 0.43 1
       }
      }

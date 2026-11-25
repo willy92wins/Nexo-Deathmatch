@@ -25,6 +25,11 @@ modded class MissionGameplay
             m_HUD.Destroy();
 
         m_HUD = null;
+
+        // F3 p3: never leak the killer camera past the mission.
+        NexoDM_KillerCam killerCam = NexoDM_KillerCam.Get();
+        if (killerCam)
+            killerCam.Abort();
     }
 
     // R2: MissionGameplay.OnUpdate(float) in scripts/5_mission/mission/missiongameplay.c:278.
@@ -35,8 +40,59 @@ modded class MissionGameplay
         if (m_HUD)
             m_HUD.OnUpdate(timeslice);
 
+        // F3 p3: per-frame killer-camera tracking (re-resolves the killer each frame).
+        NexoDM_KillerCam killerCamTick = NexoDM_KillerCam.Get();
+        if (killerCamTick)
+        {
+            killerCamTick.OnUpdate(timeslice);
+            // Correccion 1 (#1/#3/#4): the actual vanilla respawn lives here in
+            // 5_Mission because it needs MissionGameplay. KillerCam (4_World) only
+            // queues it; ConsumeRespawnIfReady fires once (still-local corpse, dead,
+            // not already respawning, CanRespawnPlayer) - never in the RPC frame.
+            if (killerCamTick.ConsumeRespawnIfReady())
+                NexoDM_PerformKillerRespawn();
+        }
+
         NexoDM_UpdateScoreboardToggle();
         NexoDM_UpdateScoreboardEscClose();
+    }
+
+    // Correccion 1 (#1): vanilla menu respawn flow, identical to GameRespawn in
+    // scripts/5_mission/gui/ingamemenu.c:345-363. Only 5_Mission may touch
+    // MissionGameplay/DestroyAllMenus (scripts/5_mission/mission/missiongameplay.c:1158).
+    protected void NexoDM_PerformKillerRespawn()
+    {
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        // R2: DayZGame.GetMenuDefaultCharacterData(bool) in scripts/3_game/global/game.c:1593;
+        // MenuDefaultCharacterData.SetRandomCharacterForced(bool) in scripts/3_game/gameplay.c:1115.
+        MenuDefaultCharacterData charData = game.GetMenuDefaultCharacterData(false);
+        if (charData)
+            charData.SetRandomCharacterForced(false);
+        // R2: CGame.RespawnPlayer() in scripts/3_game/global/game.c:1107.
+        game.RespawnPlayer();
+
+        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
+        PlayerBase player = PlayerBase.Cast(game.GetPlayer());
+        if (player)
+        {
+            // R2: DayZPlayerImplement.SimulateDeath(bool) in scripts/4_world/entities/dayzplayerimplement.c:844.
+            player.SimulateDeath(true);
+            // R2: DayZPlayerImplement.ShowDeadScreen(bool,float) in scripts/4_world/entities/dayzplayerimplement.c:802;
+            // queued as in ingamemenu.c:354.
+            game.GetCallQueue(CALL_CATEGORY_GUI).Call(player.ShowDeadScreen, true, 0);
+        }
+
+        // R2: MissionGameplay.DestroyAllMenus() in scripts/5_mission/mission/missiongameplay.c:1158.
+        DestroyAllMenus();
+        // R2: MissionGameplay.SetPlayerRespawning(bool) in scripts/5_mission/mission/missiongameplay.c:1697
+        // (Mission.SetPlayerRespawning declared in scripts/3_game/gameplay.c:825).
+        SetPlayerRespawning(true);
+        // R2: MissionGameplay.Continue() in scripts/5_mission/mission/missiongameplay.c:1334
+        // (Mission.Continue declared in scripts/3_game/gameplay.c:773).
+        Continue();
     }
 
     // ESC also closes the scoreboard. The board is a passive overlay (UseKeyboard false), so it
