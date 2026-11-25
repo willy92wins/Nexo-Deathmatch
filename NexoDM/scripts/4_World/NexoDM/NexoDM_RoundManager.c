@@ -358,6 +358,8 @@ class NexoDM_RoundManager : Managed
 #ifdef SERVER
         EnsureCollections();
         m_PlayerEntries.Clear();
+        if (m_GG_BirthEquipped)
+            m_GG_BirthEquipped.Clear();
 #endif
     }
 
@@ -559,22 +561,51 @@ class NexoDM_RoundManager : Managed
         if (!victim)
             return;
 
+        // Points and killer cam need a live identity. Anti-loot does not: a logout death
+        // can arrive with GetIdentity() == null. The steam id cached at equip still identifies
+        // the participant.
         PlayerIdentity victimIdentity = victim.GetIdentity();
-        if (!victimIdentity)
-            return;
+        string victimId = string.Empty;
+        if (victimIdentity)
+        {
+            // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+            victimId = victimIdentity.GetPlainId();
+        }
 
-        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
-        string victimId = victimIdentity.GetPlainId();
-        if (victimId == string.Empty)
-            return;
+        bool scoreThisDeath = false;
+        NexoDM_PlayerEntry victimEntry = null;
+        if (victimIdentity && victimId != string.Empty)
+        {
+            victimEntry = GetEntry(victimId);
+            if (!victimEntry)
+                return;
 
-        NexoDM_PlayerEntry victimEntry = GetEntry(victimId);
-        if (!victimEntry)
-            return;
+            if (victimEntry.role != NexoDM_Role.PARTICIPANT)
+                return;
 
-        if (victimEntry.role != NexoDM_Role.PARTICIPANT)
-            return;
+            scoreThisDeath = true;
+        }
+        else
+        {
+            bool deadParticipant = false;
+            if (victim.m_GG_Role == NexoDM_Role.PARTICIPANT)
+                deadParticipant = true;
 
+            if (!deadParticipant && victim.m_GG_SteamId != string.Empty)
+            {
+                NexoDM_PlayerEntry cachedEntry = GetEntry(victim.m_GG_SteamId);
+                if (cachedEntry && cachedEntry.role == NexoDM_Role.PARTICIPANT)
+                    deadParticipant = true;
+            }
+
+            if (!deadParticipant)
+                return;
+        }
+
+        bool roundEndsByKills = false;
+        string winningKillerId = string.Empty;
+        if (scoreThisDeath)
+        {
         victimEntry.deaths = victimEntry.deaths + 1;
         string deathDetail = "participant death recorded";
         LogRule(NexoDM_Constants.RULE_DEATH_RECORDED, deathDetail);
@@ -612,8 +643,6 @@ class NexoDM_RoundManager : Managed
             }
         }
 
-        bool roundEndsByKills = false;
-        string winningKillerId = string.Empty;
         PlayerBase creditedKiller = null;
         if (killerPlayer && killerId != string.Empty && killerId != victimId)
         {
@@ -650,18 +679,14 @@ class NexoDM_RoundManager : Managed
         // would otherwise re-award stale assists on the entry's next death.
         if (victimEntry.damagedBy)
             victimEntry.damagedBy.Clear();
+        }
 
         // Anti-loot: strip firearms/mags/ammo from the corpse now and
         // sweep any dropped on the ground shortly after, so the round weapon can't be looted.
         // Participants only. The knife (everyone has one), clothing and
         // the body are kept - WipeWeaponsOnly preserves the knife via ShouldDeleteWeaponLoadoutItem.
-        vector deathPos = victim.GetPosition();
-        WipeWeaponsOnly(victim);
-        // R2: ScriptCallQueue.CallLater(func,int,bool,...) pattern in scripts/2_gamelib/tools.c:46.
-        GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathSite, 2000, false, deathPos);
-        // Final cleanup: delete the corpse and re-sweep stray weapons once physics has settled.
-        // Runs regardless of later round-state changes (arena hygiene, no lootable round weapons).
-        GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathFinal, 10000, false, victim, deathPos);
+        // Also runs when identity is already gone (logout death).
+        ScheduleCorpseAntiLoot(victim);
 
         // F3 p4: deferred to the end so death cleanup above is already scheduled.
         if (roundEndsByKills)
@@ -669,6 +694,32 @@ class NexoDM_RoundManager : Managed
             string killsReason = "kills_to_win";
             EndRound(killsReason, winningKillerId);
         }
+#endif
+    }
+
+    // Strip the corpse now, sweep the ground at 2 s, and delete the body only after the killer
+    // camera can finish: max(10 s, RespawnDelay + 5 s).
+    protected void ScheduleCorpseAntiLoot(PlayerBase victim)
+    {
+#ifdef SERVER
+        if (!victim)
+            return;
+
+        vector deathPos = victim.GetPosition();
+        WipeWeaponsOnly(victim);
+        // R2: ScriptCallQueue.CallLater(func,int,bool,...) pattern in scripts/2_gamelib/tools.c:46.
+        GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathSite, 2000, false, deathPos);
+
+        int holdSeconds = 10;
+        if (m_Config)
+        {
+            // R2: NexoDM_Config.GetRespawnDelay() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:298.
+            int camSeconds = m_Config.GetRespawnDelay() + 5;
+            if (camSeconds > holdSeconds)
+                holdSeconds = camSeconds;
+        }
+        int delayMs = holdSeconds * 1000;
+        GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathFinal, delayMs, false, victim, deathPos);
 #endif
     }
 
@@ -951,18 +1002,41 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
+    // Next-tick equip callbacks bail out if the player is gone, pending delete, disconnected,
+    // without identity, or the round already left ACTIVE.
+    protected bool GG_DeferredEquipStillActive(PlayerBase player)
+    {
+        if (!player)
+            return false;
+
+        // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
+        if (!player.IsAlive())
+            return false;
+
+        // R2: EntityAI.IsSetForDeletion() in scripts/3_game/entities/entityai.c:812.
+        if (player.IsSetForDeletion())
+            return false;
+
+        // R2: PlayerBase.IsPlayerDisconnected() in scripts/4_world/entities/manbase/playerbase.c:2638.
+        if (player.IsPlayerDisconnected())
+            return false;
+
+        if (!player.GetIdentity())
+            return false;
+
+        if (m_State != NexoDM_State.ACTIVE)
+            return false;
+
+        return true;
+    }
+
     // Deferred target of MakeWeaponReady (next tick = stable FSM): chamber the in-hands weapon (or
     // fully load an EMPTY internal magazine + chamber with one consistent ammo type) and bind it to
     // hotbar slot 1. Server-only.
     void GG_ReadyWeapon(PlayerBase player)
     {
 #ifdef SERVER
-        if (!player)
-            return;
-
-        // m3: the player may have died/disconnected between the spawn and this next-tick callback.
-        // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
-        if (!player.IsAlive())
+        if (!GG_DeferredEquipStillActive(player))
             return;
 
         // The weapon usually spawns in hands, but LBmaster may have placed it in the inventory.
@@ -975,6 +1049,8 @@ class NexoDM_RoundManager : Managed
         if (!wpn)
             return;
 
+        // F4 r1 #2: this repo and the review do not cite a verified take-to-hands API, so a weapon
+        // found only by FindPlayerWeapon is chambered and hotbar-bound where it already sits.
         int muzzle = wpn.GetCurrentMuzzle();
         // R2: Weapon.HasInternalMagazine/GetInternalMagazineCartridgeCount in
         // scripts/4_world/entities/core/inherited/weapon.c:106/111. Only fill an EMPTY internal mag:
@@ -992,9 +1068,10 @@ class NexoDM_RoundManager : Managed
         }
         else
         {
-            // R2: Weapon_Base.FillChamber() in weapon_base.c:929. Idempotent (FillSpecificChamber :988).
-            // Detachable-mag weapons keep the magazine the LBmaster preset attached; just chamber.
-            wpn.FillChamber();
+            // R2: Weapon_Base.FillChamber(string ammoType = "", ...) in scripts/4_world/entities/firearms/weapon_base.c:921.
+            // Same lethal pick as the internal-mag branch so "" cannot roll Ammo_12gaRubberSlug.
+            string chamberAmmo = GG_PickLethalChamberAmmo(wpn);
+            wpn.FillChamber(chamberAmmo);
         }
 
         // R2: Weapon.Synchronize() in scripts/4_world/entities/core/inherited/weapon.c:11.
@@ -1144,9 +1221,10 @@ class NexoDM_RoundManager : Managed
             if (entry.role == NexoDM_Role.PARTICIPANT && m_State == NexoDM_State.ACTIVE)
             {
                 // F-07: re-equip so the reconnected participant's inventory matches the round loadout.
-                if (EnsureConfig())
+                if (EnsureConfig() && player.IsAlive())
                 {
                     // F4: wipe lives inside EquipPlayer, after both presets resolve.
+                    // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
                     EquipPlayer(player, entry.role);
                 }
                 // F3 p8: reconnect during the freeze window freezes like everyone else.
@@ -1771,19 +1849,24 @@ class NexoDM_RoundManager : Managed
         if (item.IsKindOf(ammunitionBase))
             return true;
 
+        string ammoBox = "Box_Base";
+        // R2: Box_Base (ammo boxes) in scripts/4_world/entities/itembase/ammoboxes.c:1-16.
+        if (item.IsKindOf(ammoBox))
+            return true;
+
         return false;
     }
 
-    protected void EquipPlayer(PlayerBase player, int role)
+    protected bool EquipPlayer(PlayerBase player, int role)
     {
         if (!player)
-            return;
+            return false;
 
         if (!m_Config)
-            return;
+            return false;
 
         if (role != NexoDM_Role.PARTICIPANT)
-            return;
+            return false;
 
         // F4: resolve clothing and one random loadout BEFORE wiping. A miss logs and leaves the
         // inventory untouched (SpawnPreset only adds).
@@ -1794,13 +1877,13 @@ class NexoDM_RoundManager : Managed
         if (clothing == string.Empty)
         {
             LogRule("PRESET_RESOLVE_FAILED_CLOTHING", clothing);
-            return;
+            return false;
         }
 
         if (!guns || guns.Count() <= 0)
         {
             LogRule("PRESET_RESOLVE_FAILED_GUN", "");
-            return;
+            return false;
         }
 
         // R2: Math.RandomInt(int,int) max-exclusive in scripts/1_core/proto/enmath.c:38.
@@ -1811,7 +1894,7 @@ class NexoDM_RoundManager : Managed
         {
             LogRule("PRESET_LOADER_UNAVAILABLE_CLOTHING", clothing);
             LogRule("PRESET_LOADER_UNAVAILABLE_GUN", gunName);
-            return;
+            return false;
         }
 
         // R2: LB_PresetLoader.GetPreset(string) in LBmaster_Core/scripts/4_World/LBmaster_Core/Config/LB_PresetLoader.c:146.
@@ -1819,14 +1902,14 @@ class NexoDM_RoundManager : Managed
         if (!clothingPreset)
         {
             LogRule("PRESET_RESOLVE_FAILED_CLOTHING", clothing);
-            return;
+            return false;
         }
 
         LB_PresetBase gunPreset = LB_PresetLoader.Get.GetPreset(gunName);
         if (!gunPreset)
         {
             LogRule("PRESET_RESOLVE_FAILED_GUN", gunName);
-            return;
+            return false;
         }
 
         WipeInventory(player);
@@ -1843,6 +1926,14 @@ class NexoDM_RoundManager : Managed
         // visible loadout (clothing + weapon-in-hands) stays synchronous for the GG-01v5/v6 appearance.
         // R2: ScriptCallQueue.CallLater(func,int,bool,...) in scripts/2_gamelib/tools.c:61.
         GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(GG_GiveKnifeAndBandage, 0, false, player);
+
+        PlayerIdentity equippedIdentity = player.GetIdentity();
+        if (equippedIdentity)
+        {
+            // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+            player.m_GG_SteamId = equippedIdentity.GetPlainId();
+        }
+        return true;
     }
 
     // Deferred (next tick) creation + hotbar bind of the knife (slot 2) and bandage (slot 3). These are
@@ -1853,12 +1944,7 @@ class NexoDM_RoundManager : Managed
     void GG_GiveKnifeAndBandage(PlayerBase player)
     {
 #ifdef SERVER
-        if (!player)
-            return;
-
-        // m3: skip a player who died/disconnected in the one-tick gap since the equip.
-        // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
-        if (!player.IsAlive())
+        if (!GG_DeferredEquipStillActive(player))
             return;
 
         if (!m_Config)
@@ -2034,7 +2120,9 @@ class NexoDM_RoundManager : Managed
             return;
 
         // F4: wipe lives inside EquipPlayer, after both presets resolve.
-        EquipPlayer(player, NexoDM_Role.PARTICIPANT);
+        bool equipped = EquipPlayer(player, NexoDM_Role.PARTICIPANT);
+        if (!equipped)
+            return;
 
         if (!m_GG_BirthEquipped)
             m_GG_BirthEquipped = new set<string>();

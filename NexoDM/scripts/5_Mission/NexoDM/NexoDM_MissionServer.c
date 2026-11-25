@@ -150,8 +150,22 @@ modded class MissionServer
         if (!player.IsAlive())
             return;
 
+        // R2: EntityAI.IsSetForDeletion() in scripts/3_game/entities/entityai.c:812.
+        if (player.IsSetForDeletion())
+            return;
+
+        // R2: PlayerBase.IsPlayerDisconnected() in scripts/4_world/entities/manbase/playerbase.c:2638.
+        if (player.IsPlayerDisconnected())
+            return;
+
+        if (!player.GetIdentity())
+            return;
+
         NexoDM_RoundManager manager = NexoDM_RoundManager.GetInstance();
         if (!manager)
+            return;
+
+        if (manager.GetState() != NexoDM_State.ACTIVE)
             return;
 
         manager.OnPlayerRespawn(identity, player);
