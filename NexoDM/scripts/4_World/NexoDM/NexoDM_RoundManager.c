@@ -418,7 +418,7 @@ class NexoDM_RoundManager : Managed
             // R2: Object.SetPosition(vector) in scripts/3_game/entities/object.c:300.
             player.SetPosition(spawn);
 
-            WipeInventory(player);
+            // F4: wipe lives inside EquipPlayer, after both presets resolve.
             EquipPlayer(player, entry.role);
 
             if (entry.role == NexoDM_Role.PARTICIPANT)
@@ -910,7 +910,7 @@ class NexoDM_RoundManager : Managed
             vector spawn = PickRandomSpawn();
             // R2: Object.SetPosition(vector) in scripts/3_game/entities/object.c:300.
             player.SetPosition(spawn);
-            WipeInventory(player);
+            // F4: wipe lives inside EquipPlayer, after both presets resolve.
             EquipPlayer(player, entry.role);
         }
 
@@ -1091,7 +1091,7 @@ class NexoDM_RoundManager : Managed
                 {
                     vector spawn = PickRandomSpawn();
                     player.SetPosition(spawn);
-                    WipeInventory(player);
+                    // F4: wipe lives inside EquipPlayer, after both presets resolve.
                     EquipPlayer(player, activeEntry.role);
                 }
             }
@@ -1146,7 +1146,7 @@ class NexoDM_RoundManager : Managed
                 // F-07: re-equip so the reconnected participant's inventory matches the round loadout.
                 if (EnsureConfig())
                 {
-                    WipeInventory(player);
+                    // F4: wipe lives inside EquipPlayer, after both presets resolve.
                     EquipPlayer(player, entry.role);
                 }
                 // F3 p8: reconnect during the freeze window freezes like everyone else.
@@ -1163,7 +1163,7 @@ class NexoDM_RoundManager : Managed
             {
                 vector spawn = PickRandomSpawn();
                 player.SetPosition(spawn);
-                WipeInventory(player);
+                // F4: wipe lives inside EquipPlayer, after both presets resolve.
                 EquipPlayer(player, entry.role);
             }
             ApplyRoleToPlayer(player, entry.role);
@@ -1782,56 +1782,59 @@ class NexoDM_RoundManager : Managed
         if (!m_Config)
             return;
 
-        // R2: NexoDM_Config.GetClothingPreset() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:259.
-        string clothing = m_Config.GetClothingPreset();
-        if (clothing != string.Empty)
-        {
-            if (!LB_PresetLoader.Get)
-            {
-                LogRule("PRESET_LOADER_UNAVAILABLE_CLOTHING", clothing);
-            }
-            else
-            {
-                // R2: LB_PresetLoader.GetPreset(string) in LBmaster_Core/scripts/4_World/LBmaster_Core/Config/LB_PresetLoader.c:146.
-                LB_PresetBase clothingPreset = LB_PresetLoader.Get.GetPreset(clothing);
-                if (clothingPreset)
-                {
-                    // R2: LB_PresetBase.SpawnPreset(PlayerBase,EntityAI) in LBmaster_Core/scripts/4_World/LBmaster_Core/Struct/LB_PresetBase.c:138.
-                    clothingPreset.SpawnPreset(player, player);
-                }
-                else
-                {
-                    LogRule("PRESET_RESOLVE_FAILED_CLOTHING", clothing);
-                }
-            }
-        }
-
         if (role != NexoDM_Role.PARTICIPANT)
             return;
 
-        // F4: loadout al azar en cada spawn
-        // R2: NexoDM_Config.GetLoadouts() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:264.
+        // F4: resolve clothing and one random loadout BEFORE wiping. A miss logs and leaves the
+        // inventory untouched (SpawnPreset only adds).
+        // R2: NexoDM_Config.GetClothingPreset() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:265.
+        string clothing = m_Config.GetClothingPreset();
+        // R2: NexoDM_Config.GetLoadouts() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:270.
         array<string> guns = m_Config.GetLoadouts();
-        if (guns && guns.Count() > 0)
+        if (clothing == string.Empty)
         {
-            string gunName = guns.Get(0);
-            if (!LB_PresetLoader.Get)
-            {
-                LogRule("PRESET_LOADER_UNAVAILABLE_GUN", gunName);
-            }
-            else
-            {
-                LB_PresetBase gunPreset = LB_PresetLoader.Get.GetPreset(gunName);
-                if (gunPreset)
-                {
-                    gunPreset.SpawnPreset(player, player);
-                    // Chamber + load the freshly spawned weapon and bind it to the hotbar.
-                    MakeWeaponReady(player);
-                }
-                else
-                    LogRule("PRESET_RESOLVE_FAILED_GUN", gunName);
-            }
+            LogRule("PRESET_RESOLVE_FAILED_CLOTHING", clothing);
+            return;
         }
+
+        if (!guns || guns.Count() <= 0)
+        {
+            LogRule("PRESET_RESOLVE_FAILED_GUN", "");
+            return;
+        }
+
+        // R2: Math.RandomInt(int,int) max-exclusive in scripts/1_core/proto/enmath.c:38.
+        int gunIndex = Math.RandomInt(0, guns.Count());
+        string gunName = guns.Get(gunIndex);
+
+        if (!LB_PresetLoader.Get)
+        {
+            LogRule("PRESET_LOADER_UNAVAILABLE_CLOTHING", clothing);
+            LogRule("PRESET_LOADER_UNAVAILABLE_GUN", gunName);
+            return;
+        }
+
+        // R2: LB_PresetLoader.GetPreset(string) in LBmaster_Core/scripts/4_World/LBmaster_Core/Config/LB_PresetLoader.c:146.
+        LB_PresetBase clothingPreset = LB_PresetLoader.Get.GetPreset(clothing);
+        if (!clothingPreset)
+        {
+            LogRule("PRESET_RESOLVE_FAILED_CLOTHING", clothing);
+            return;
+        }
+
+        LB_PresetBase gunPreset = LB_PresetLoader.Get.GetPreset(gunName);
+        if (!gunPreset)
+        {
+            LogRule("PRESET_RESOLVE_FAILED_GUN", gunName);
+            return;
+        }
+
+        WipeInventory(player);
+        // R2: LB_PresetBase.SpawnPreset(PlayerBase,EntityAI) in LBmaster_Core/scripts/4_World/LBmaster_Core/Struct/LB_PresetBase.c:138.
+        clothingPreset.SpawnPreset(player, player);
+        gunPreset.SpawnPreset(player, player);
+        // Chamber + load the freshly spawned weapon and bind it to the hotbar.
+        MakeWeaponReady(player);
 
         // Knife (hotbar slot 2) + bandage (hotbar slot 3) are inventory items - NOT visible to other
         // clients - so both their CREATION and their bind are DEFERRED off this frame (3a). On a
@@ -1866,25 +1869,117 @@ class NexoDM_RoundManager : Managed
         if (!inventory)
             return;
 
-        // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:270.
+        // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:276.
         string knife = m_Config.GetKnife();
         if (knife != string.Empty)
         {
-            // R2: GameInventory.CreateInInventory(string) in scripts/3_game/systems/inventory/inventory.c:876.
-            EntityAI knifeItem = inventory.CreateInInventory(knife);
+            // F4: reuse the preset knife when one is already on the player; do not spawn a second.
+            EntityAI knifeItem = GG_TakeSingleOfType(player, knife);
+            if (!knifeItem)
+            {
+                // R2: GameInventory.CreateInInventory(string) in scripts/3_game/systems/inventory/inventory.c:876.
+                knifeItem = inventory.CreateInInventory(knife);
+            }
             // R2: PlayerBase.SetQuickBarEntityShortcut(EntityAI,int,bool) in scripts/4_world/entities/manbase/playerbase.c:2232.
             if (knifeItem)
                 player.SetQuickBarEntityShortcut(knifeItem, 1, true);
         }
 
         // Bandage on hotbar slot 3 (index 2). Independent of the Knife config (m1). Scope recorded in
-        // product-spec Changelog 2026-06-14 (C3/F2 amended). [verify in-game] not double with a bandage
-        // already in the ClothingPreset.
-        // R2: GameInventory.CreateInInventory(string) in scripts/3_game/systems/inventory/inventory.c:876.
-        EntityAI bandageItem = inventory.CreateInInventory("BandageDressing");
+        // product-spec Changelog 2026-06-14 (C3/F2 amended). F4: a BandageDressing already spawned by
+        // the preset is bound instead of creating another.
+        string bandageType = "BandageDressing";
+        EntityAI bandageItem = GG_TakeSingleOfType(player, bandageType);
+        if (!bandageItem)
+        {
+            // R2: GameInventory.CreateInInventory(string) in scripts/3_game/systems/inventory/inventory.c:876.
+            bandageItem = inventory.CreateInInventory(bandageType);
+        }
         if (bandageItem)
             player.SetQuickBarEntityShortcut(bandageItem, 2, true);
 #endif
+    }
+
+    // F4: first carried item of typeName stays; any further match is deleted so the hotbar slot
+    // binds a single object. Returns null when the player has none. Server-only.
+    protected EntityAI GG_TakeSingleOfType(PlayerBase player, string typeName)
+    {
+#ifdef SERVER
+        if (!player)
+            return null;
+
+        if (typeName == string.Empty)
+            return null;
+
+        // R2: EntityAI.GetInventory() in scripts/3_game/entities/entityai.c:1834.
+        GameInventory inv = player.GetInventory();
+        if (!inv)
+            return null;
+
+        array<EntityAI> items = new array<EntityAI>();
+        // R2: GameInventory.EnumerateInventory(InventoryTraversalType,out array<EntityAI>) in scripts/3_game/systems/inventory/inventory.c:127; InventoryTraversalType.PREORDER in scripts/3_game/gameplay.c:7.
+        inv.EnumerateInventory(InventoryTraversalType.PREORDER, items);
+
+        array<EntityAI> matches = new array<EntityAI>();
+        int scanIndex = 0;
+        for (scanIndex = 0; scanIndex < items.Count(); scanIndex = scanIndex + 1)
+        {
+            EntityAI candidate = items.Get(scanIndex);
+            // R2: Object.IsKindOf(string) in scripts/3_game/entities/object.c:517.
+            if (candidate && candidate != player && candidate.IsKindOf(typeName))
+                matches.Insert(candidate);
+        }
+
+        if (matches.Count() == 0)
+            return null;
+
+        EntityAI kept = matches.Get(0);
+        DayZGame game = GetGame();
+        int extraIndex = 1;
+        for (extraIndex = 1; extraIndex < matches.Count(); extraIndex = extraIndex + 1)
+        {
+            EntityAI extraItem = matches.Get(extraIndex);
+            if (!extraItem || !game)
+                continue;
+
+            // A duplicate sitting inside another duplicate goes with that parent's tree delete.
+            bool underOtherMatch = false;
+            int priorIndex = 1;
+            for (priorIndex = 1; priorIndex < extraIndex; priorIndex = priorIndex + 1)
+            {
+                if (GG_EntityIsUnder(extraItem, matches.Get(priorIndex)))
+                    underOtherMatch = true;
+            }
+            if (underOtherMatch)
+                continue;
+
+            DeleteWeaponLoadoutEntityTree(extraItem, game);
+        }
+
+        return kept;
+#else
+        return null;
+#endif
+    }
+
+    // True when item hangs under ancestor (attachment or cargo). Used so a nested duplicate is not
+    // deleted twice. Server-only.
+    protected bool GG_EntityIsUnder(EntityAI item, EntityAI ancestor)
+    {
+        if (!item || !ancestor)
+            return false;
+
+        // R2: EntityAI.GetHierarchyParent() in scripts/3_game/entities/entityai.c (same file as GetHierarchyRootPlayer, cited at :877 above).
+        EntityAI above = item.GetHierarchyParent();
+        int guard = 0;
+        while (above && guard < 32)
+        {
+            if (above == ancestor)
+                return true;
+            above = above.GetHierarchyParent();
+            guard = guard + 1;
+        }
+        return false;
     }
 
     // GG-01v5 birth-equip resolution: decide whether a fresh character about to be created belongs to a
@@ -1938,7 +2033,7 @@ class NexoDM_RoundManager : Managed
         if (!player)
             return;
 
-        WipeInventory(player);
+        // F4: wipe lives inside EquipPlayer, after both presets resolve.
         EquipPlayer(player, NexoDM_Role.PARTICIPANT);
 
         if (!m_GG_BirthEquipped)
