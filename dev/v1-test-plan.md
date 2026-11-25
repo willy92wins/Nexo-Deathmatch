@@ -70,5 +70,5 @@ Diseño aprobado por Guillermo el 25-nov a las 18:37 (`dev/mocks/hud-nexo-dayz.h
 | 5.6 | Mantener T y soltar | Mientras se mantiene, el top 5 con tu fila resaltada (negro con texto rojo); al soltar desaparece; no se ve en ningún otro momento | captura |
 | 5.7 | Tras 4 bajas y 2 asistencias | 500 puntos en el HUD y en el log del servidor | log de servidor y de cliente |
 | 5.8 | Cámara del asesino, menú de pausa, fin de ronda | El HUD nuevo se oculta donde dice el mock y no queda nada pintado fuera de la ronda | capturas |
-| 5.9 | Con LBmaster Groups cargado, pulsar T | Comprobar si se lanza también el ping táctico de grupo (los dos usan kT) | captura |
+| 5.9 | Con LBmaster Groups cargado, pulsar T | Sale el top 5. Que salte también el ping táctico de grupo es lo esperado: Guillermo decidió el 25-nov a las 21:02 dejar T aunque coincida, reasignable en Controles | captura |
 | 5.10 | Cliente en inglés | Sin claves `STR_` sueltas | captura |
