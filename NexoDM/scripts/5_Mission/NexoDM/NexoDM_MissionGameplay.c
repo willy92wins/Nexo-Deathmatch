@@ -2,7 +2,10 @@ modded class MissionGameplay
 {
     protected ref NexoDM_HUD m_HUD;
     protected UAInput m_GG_ScoreInput;
-    protected ref UAIDWrapper m_NexoDM_Top5Wrapper;
+    // No ref: UAIDWrapper has a private destructor and vanilla keeps it as a plain member.
+    // R2: UAIDWrapper in scripts/3_game/inputapi/uainput.c:24-30; vanilla use in
+    // scripts/4_world/classes/useractionscomponent/actioninput.c:21.
+    protected UAIDWrapper m_NexoDM_Top5Wrapper;
 
     // R2: MissionGameplay.OnInit() in scripts/5_mission/mission/missiongameplay.c:96.
     override void OnInit()
@@ -26,6 +29,12 @@ modded class MissionGameplay
             m_HUD.Destroy();
 
         m_HUD = null;
+
+        // F5 r2 #14: the client-side HUD data is a static singleton; clear it when the mission ends
+        // (disconnect, return to menu) so a later connection never shows stale round data.
+        NexoDM_HudData hudData = NexoDM_HudData.Get();
+        if (hudData)
+            hudData.Reset();
 
         // F3 p3: never leak the killer camera past the mission.
         NexoDM_KillerCam killerCam = NexoDM_KillerCam.Get();

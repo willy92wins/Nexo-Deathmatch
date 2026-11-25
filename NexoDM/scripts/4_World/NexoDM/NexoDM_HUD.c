@@ -67,6 +67,15 @@ class NexoDM_HUD : Managed
     protected int m_TrendBlood;
     protected int m_TrendWater;
     protected int m_TrendFood;
+    protected const int TREND_HOLD_MS = 2500;
+    protected int m_LastHealthChangeMs;
+    protected int m_LastBloodChangeMs;
+    protected int m_LastWaterChangeMs;
+    protected int m_LastFoodChangeMs;
+    protected int m_LastHealthValue = -1;
+    protected int m_LastBloodValue = -1;
+    protected int m_LastWaterValue = -1;
+    protected int m_LastFoodValue = -1;
     protected float m_ClockMarkY;
     protected float m_HudTime;
     protected float m_RefreshAcc;
@@ -617,6 +626,30 @@ class NexoDM_HUD : Managed
             m_PrevWater = water;
         if (m_PrevFood < 0 || food != m_PrevFood)
             m_PrevFood = food;
+        // F5 r2: an arrow stays lit only while its vital keeps changing. Vitals arrive at most once per
+        // second, so no change for TREND_HOLD_MS means the value is stable and the arrow goes off.
+        // R2: CGame.GetTime() in scripts/3_game/global/game.c:1535.
+        int nowMs = GetGame().GetTime();
+        if (m_PrevHealth != m_LastHealthValue)
+            m_LastHealthChangeMs = nowMs;
+        if (m_PrevBlood != m_LastBloodValue)
+            m_LastBloodChangeMs = nowMs;
+        if (m_PrevWater != m_LastWaterValue)
+            m_LastWaterChangeMs = nowMs;
+        if (m_PrevFood != m_LastFoodValue)
+            m_LastFoodChangeMs = nowMs;
+        m_LastHealthValue = m_PrevHealth;
+        m_LastBloodValue = m_PrevBlood;
+        m_LastWaterValue = m_PrevWater;
+        m_LastFoodValue = m_PrevFood;
+        if (nowMs - m_LastHealthChangeMs > TREND_HOLD_MS)
+            m_TrendHealth = 0;
+        if (nowMs - m_LastBloodChangeMs > TREND_HOLD_MS)
+            m_TrendBlood = 0;
+        if (nowMs - m_LastWaterChangeMs > TREND_HOLD_MS)
+            m_TrendWater = 0;
+        if (nowMs - m_LastFoodChangeMs > TREND_HOLD_MS)
+            m_TrendFood = 0;
         ApplyTrend(m_HealthTrendUp, m_HealthTrendDown, m_TrendHealth);
         ApplyTrend(m_BloodTrendUp, m_BloodTrendDown, m_TrendBlood);
         ApplyTrend(m_WaterTrendUp, m_WaterTrendDown, m_TrendWater);
