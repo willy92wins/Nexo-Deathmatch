@@ -75,22 +75,6 @@ modded class LBChatHandler
             // F-27: return so a no-op gungamestop doesn't fall through to the block(s) below.
             return;
         }
-
-        // === NEXODM DEBUG (REVERT BEFORE RELEASE): simulate gungame events for solo testing ===
-        if (cmd == "ggsim")
-        {
-            string action = "";
-            if (args && args.Count() > 0)
-                action = args.Get(0);
-
-            manager.DebugSim(sender, action);
-
-            string simAck = "ggsim ";
-            simAck = simAck + action;
-            SendSimpleChatMessage(sender, simAck, false);
-            return;
-        }
-        // === END NEXODM DEBUG ===
     }
 
     protected bool NexoDM_IsCommand(string cmd)
@@ -100,11 +84,6 @@ modded class LBChatHandler
 
         if (cmd == "gungamestop")
             return true;
-
-        // === NEXODM DEBUG (REVERT BEFORE RELEASE): solo-test sim command ===
-        if (cmd == "ggsim")
-            return true;
-        // === END NEXODM DEBUG ===
 
         return false;
     }

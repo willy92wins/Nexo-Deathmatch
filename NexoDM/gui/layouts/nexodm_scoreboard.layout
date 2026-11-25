@@ -90,17 +90,6 @@ FrameWidgetClass BoardRoot {
        text "#STR_NEXODM_SCOREBOARD_PLAYER"
        color 0.47 0.46 0.43 1
       }
-      TextWidgetClass ColWeapon {
-       position 0.43 0
-       size 0.33 1
-       hexactpos 0
-       vexactpos 0
-       hexactsize 0
-       vexactsize 0
-       ignorepointer 1
-       text "#STR_NEXODM_SCOREBOARD_TIER"
-       color 0.47 0.46 0.43 1
-      }
       TextWidgetClass ColK {
        position 0.78 0
        size 0.07 1

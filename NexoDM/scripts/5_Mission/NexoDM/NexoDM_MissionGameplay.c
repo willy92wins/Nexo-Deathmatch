@@ -113,12 +113,6 @@ modded class MissionGameplay
         if (menu)
             return menu;
 
-        if (id == NexoDM_MenuIDs.JOIN)
-        {
-            menu = new NexoDM_JoinMenu();
-            return menu;
-        }
-
         if (id == NexoDM_MenuIDs.SCOREBOARD)
         {
             menu = new NexoDM_Scoreboard();

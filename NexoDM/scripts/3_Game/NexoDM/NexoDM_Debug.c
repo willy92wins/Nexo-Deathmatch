@@ -1,9 +1,4 @@
-// === GGDBG (REVERT BEFORE RELEASE) ==========================================
-// Temporary tracing for the join-prompt path: server PromptConnectedPlayers /
-// BroadcastOpenDialog and client OPEN_DIALOG handler / JoinMenu.Init.
-// Remove this whole file AND every NexoDM_Debug.Log(...) call before release.
-// Grep marker: [GGDBG]
-// ============================================================================
+// Tracing helper. F1 removed its call sites with the join prompt.
 class NexoDM_Debug
 {
     static void Log(string detail)

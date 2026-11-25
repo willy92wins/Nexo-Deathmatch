@@ -6,8 +6,6 @@
 class NexoDM_ScoreRow : Managed
 {
     string name;
-    int tier;
-    int tierMax;
     int kills;
     int assists;
     int deaths;
@@ -121,23 +119,11 @@ class NexoDM_Scoreboard extends UIScriptedMenu
         string rowLayout = "NexoDM/gui/layouts/nexodm_scoreboard_row.layout";
         string rankName = "RankText";
         string nameName = "NameText";
-        string tierName = "TierText";
         string kName = "KText";
         string aName = "AText";
         string dName = "DText";
-        string barName = "TierBar";
-        string crownName = "CrownIcon";
 
-        // Leader rows = rows sharing the top tier. Rows arrive ranked best-first by the server
-        // tiebreak (tier>kills>assists>deaths, OnScoreboardRequest), so row 0 carries the max tier.
-        int leaderTier = -1;
-        if (rows.Count() > 0)
-        {
-            NexoDM_ScoreRow first = rows.Get(0);
-            if (first)
-                leaderTier = first.tier;
-        }
-
+        // Rows arrive ranked best-first (kills, then assists, then fewer deaths).
         int index = 0;
         for (index = 0; index < rows.Count(); index = index + 1)
         {
@@ -154,43 +140,12 @@ class NexoDM_Scoreboard extends UIScriptedMenu
             SetRowText(row, rankName, rankStr);
             SetRowText(row, nameName, data.name);
 
-            int shown = data.tier + 1;
-            int total = data.tierMax;
-            if (total < 1)
-                total = 1;
-            if (shown < 1)
-                shown = 1;
-            if (shown > total)
-                shown = total;
-
-            string tierLabel = "Arma ";
-            tierLabel = tierLabel + shown.ToString();
-            tierLabel = tierLabel + "/";
-            tierLabel = tierLabel + total.ToString();
-            SetRowText(row, tierName, tierLabel);
-
             string kStr = data.kills.ToString();
             SetRowText(row, kName, kStr);
             string aStr = data.assists.ToString();
             SetRowText(row, aName, aStr);
             string dStr = data.deaths.ToString();
             SetRowText(row, dName, dStr);
-
-            // Leader marker: gold-tint rank + name while crown.edds is pending (the CrownIcon
-            // image stays hidden below - an untextured ImageWidget renders a solid block).
-            if (leaderTier >= 0 && data.tier == leaderTier)
-            {
-                SetRowColor(row, rankName, NexoDM_UIConst.COL_GOLD);
-                SetRowColor(row, nameName, NexoDM_UIConst.COL_GOLD);
-            }
-
-            // Progress bar + crown image are kit polish, not wired here; keep them hidden.
-            Widget bar = row.FindAnyWidget(barName);
-            if (bar)
-                bar.Show(false);
-            Widget crown = row.FindAnyWidget(crownName);
-            if (crown)
-                crown.Show(false);
 
             m_Rows.Insert(row);
         }
@@ -228,17 +183,6 @@ class NexoDM_Scoreboard extends UIScriptedMenu
             t.SetText(value);
     }
 
-    protected void SetRowColor(Widget root, string widgetName, int color)
-    {
-        if (!root)
-            return;
-
-        // R2: Widget.SetColor(int) in scripts/1_core/proto/enwidgets.c:144.
-        Widget t = root.FindAnyWidget(widgetName);
-        if (t)
-            t.SetColor(color);
-    }
-
     void RequestData()
     {
         DayZGame game = GetGame();
@@ -249,13 +193,13 @@ class NexoDM_Scoreboard extends UIScriptedMenu
         if (game.IsDedicatedServer())
             return;
 
-        // R2: CGame.GetPlayer() used for the local player in JoinMenu.c:243.
+        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
         PlayerBase player = PlayerBase.Cast(game.GetPlayer());
         if (!player)
             return;
 
-        // F-22: stop pinging once the local player is no longer a participant (round ended / became
-        // public). The server already rejects the request; this also closes the now-stale board and
+        // F-22: stop pinging once the local player is no longer a participant (round ended).
+        // The server already rejects the request; this also closes the now-stale board and
         // stops the 1.5s refresh instead of spinning RPCs forever. m_GG_Role is synced from the server.
         if (player.m_GG_Role != NexoDM_Role.PARTICIPANT)
         {

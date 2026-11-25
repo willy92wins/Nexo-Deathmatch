@@ -8,12 +8,11 @@ modded class MissionServer
     // replicated the loadout to observers. v5 instead equips DURING creation, the way vanilla does:
     // OnClientNewEvent overrides the spawn pos so the character is BORN at the gungame spawn (no
     // double-load lag), and the StartingEquipSetup override (called inside super, before the engine
-    // releases the character) wipes the vanilla default and equips the tier preset. Post-birth routing
+    // releases the character) wipes the vanilla default and equips the gun preset. Post-birth routing
     // then only resets death stats + syncs HUD; OnPlayerRespawn skips re-equip via the bornEquipped
     // guard (fallback to old post-creation equip if StartingEquipSetup did not run). OnClientReadyEvent
-    // keeps a redundant idempotent OnPlayerReady for the initial-connect voting-dialog RPC.
+    // keeps a redundant idempotent OnPlayerReady for the initial connect.
     protected string m_GG_BirthSteamId;
-    protected int m_GG_BirthTier;
 
     // Unsupervised 24/7 mode: arm the first autostart attempt at server boot; the round manager
     // re-arms after every round from ReturnToIdle. Together they cover the periodic-restart cycle.
@@ -48,11 +47,9 @@ modded class MissionServer
 #ifdef SERVER
         // GG-01v5: before super creates the character, if this is a participant respawn in an ACTIVE
         // round, override the spawn pos so the character is BORN at the gungame spawn (no
-        // vanilla-spawn-then-teleport double map load) and stash the tier so the StartingEquipSetup
-        // override equips it during creation. The stash is read+consumed within this same synchronous
-        // OnClientNewEvent -> super -> StartingEquipSetup flow (DayZ processes one player at a time).
+        // vanilla-spawn-then-teleport double map load). The stash is read+consumed within this same
+        // synchronous OnClientNewEvent -> super -> StartingEquipSetup flow (DayZ processes one player at a time).
         m_GG_BirthSteamId = string.Empty;
-        m_GG_BirthTier = 0;
         DayZGame preGame = GetGame();
         if (preGame && preGame.IsDedicatedServer() && identity)
         {
@@ -60,12 +57,10 @@ modded class MissionServer
             if (preMgr)
             {
                 vector ggSpawn = vector.Zero;
-                int ggTier = 0;
-                if (preMgr.ResolveParticipantBirthSpawn(identity.GetPlainId(), ggSpawn, ggTier))
+                if (preMgr.ResolveParticipantBirthSpawn(identity.GetPlainId(), ggSpawn))
                 {
                     birthPos = ggSpawn;
                     m_GG_BirthSteamId = identity.GetPlainId();
-                    m_GG_BirthTier = ggTier;
                 }
             }
         }
@@ -92,11 +87,10 @@ modded class MissionServer
             {
                 NexoDM_RoundManager birthMgr = NexoDM_RoundManager.GetInstance();
                 if (birthMgr)
-                    birthMgr.EquipParticipantAtBirth(newPlayer, m_GG_BirthSteamId, m_GG_BirthTier);
+                    birthMgr.EquipParticipantAtBirth(newPlayer, m_GG_BirthSteamId);
 
                 // Consume the stash so neither this block nor a later character creation re-triggers.
                 m_GG_BirthSteamId = string.Empty;
-                m_GG_BirthTier = 0;
             }
 
             // GG-01v5/v6: post-birth routing on the next tick (FRESH_CHAR_ROUTE_DELAY_MS=0). Teleport+equip
@@ -114,7 +108,7 @@ modded class MissionServer
     // EquipCharacter (missionserver.c:523), inside super.OnClientNewEvent, AFTER applying the default
     // loadout and BEFORE the engine releases the character to the network - the same point where the
     // base game dresses characters so all clients see them clothed. If OnClientNewEvent stashed a
-    // birth plan for THIS character, wipe the vanilla default and equip the tier preset here, so
+    // birth plan for THIS character, wipe the vanilla default and equip the gun preset here, so
     // observers receive the respawned participant already dressed (fixes the GG-01..v4 naked desync).
     // R2: MissionServer.StartingEquipSetup(PlayerBase,bool) in scripts/5_mission/mission/missionserver.c:527.
     override void StartingEquipSetup(PlayerBase player, bool clothesChosen)
@@ -134,16 +128,15 @@ modded class MissionServer
 
         NexoDM_RoundManager mgr = NexoDM_RoundManager.GetInstance();
         if (mgr)
-            mgr.EquipParticipantAtBirth(player, m_GG_BirthSteamId, m_GG_BirthTier);
+            mgr.EquipParticipantAtBirth(player, m_GG_BirthSteamId);
 
         // Consume the stash so a later character creation in this session does not re-trigger.
         m_GG_BirthSteamId = string.Empty;
-        m_GG_BirthTier = 0;
 #endif
     }
 
     // GG-01v5 post-birth target: the teleport + equip already happened at birth (pos override +
-    // StartingEquipSetup). This resets death stats + syncs role/tier/HUD for a freshly created
+    // StartingEquipSetup). This resets death stats + syncs role/HUD for a freshly created
     // character (connect or respawn). Guards cover the next-tick window: the player may have
     // disconnected (null) or died again before this fires. OnPlayerRespawn skips re-equip for a
     // born-equipped participant (bornEquipped guard); fallback equips here if birth-equip did not run.
@@ -168,7 +161,7 @@ modded class MissionServer
 
     // GG-01v3: initial-connect handshake only (does NOT fire on respawn). Keeps a redundant,
     // idempotent OnPlayerReady because this is the moment the client is loaded and ready to receive
-    // the voting-dialog RPC; the respawn/equip routing lives in NexoDM_RouteFreshChar.
+    // the client can receive RPCs; the respawn/equip routing lives in NexoDM_RouteFreshChar.
     // R2: MissionServer.OnClientReadyEvent(PlayerIdentity,PlayerBase) in scripts/5_mission/mission/missionserver.c:586.
     override void OnClientReadyEvent(PlayerIdentity identity, PlayerBase player)
     {
@@ -218,40 +211,6 @@ modded class MissionServer
         NexoDM_RoundManager manager = NexoDM_RoundManager.GetInstance();
         if (manager)
             manager.OnPlayerReconnect(identity, player);
-#endif
-    }
-
-    // GG-08: PlayerDisconnected is the no-return point of the logout flow; identity may already be
-    // deleted here, and the player object leaves the world a few calls later (missionserver.c:677-711).
-    // Defer the crown recompute 1s — the same deferral vanilla uses for SendPlayerList (:710) — so
-    // FindPlayerBySteamId no longer sees the leaver when leaders re-evaluate.
-    // R2: MissionServer.PlayerDisconnected(PlayerBase,PlayerIdentity,string) in scripts/5_mission/mission/missionserver.c:677.
-    override void PlayerDisconnected(PlayerBase player, PlayerIdentity identity, string uid)
-    {
-        super.PlayerDisconnected(player, identity, uid);
-
-#ifdef SERVER
-        // R2: GetGame() in scripts/3_game/gameplay.c:636; DayZGame.IsDedicatedServer() in scripts/3_game/global/game.c:1127.
-        DayZGame game = GetGame();
-        if (!game)
-            return;
-
-        if (!game.IsDedicatedServer())
-            return;
-
-        // R2: ScriptCallQueue.CallLater(func,int,bool,...) in scripts/2_gamelib/tools.c:61.
-        game.GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(NexoDM_RecalcLeadersDeferred, 1000, false);
-#endif
-    }
-
-    // GG-08: deferred target for PlayerDisconnected above. CallLater on an own method is the
-    // pattern already used by the mod (NexoDM_PlayerBase.c deferred JOIN open).
-    protected void NexoDM_RecalcLeadersDeferred()
-    {
-#ifdef SERVER
-        NexoDM_RoundManager manager = NexoDM_RoundManager.GetInstance();
-        if (manager)
-            manager.OnPlayerGoneRecalculate();
 #endif
     }
 

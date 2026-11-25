@@ -9,8 +9,6 @@ class NexoDM_Config
     string MaxPlayers;
     ref array<string> RespawnCoordinates;
     string RespawnRadius;
-    ref array<string> PublicCoordinates;
-    string PublicRespawnRadius;
     // Unsupervised 24/7 mode: when enabled ("1"/"true"), the round manager arms a StartGame
     // attempt AutostartDelaySeconds after server boot and after each round returns to idle.
     // The delay field is only consulted while Autostart is enabled.
@@ -24,7 +22,6 @@ class NexoDM_Config
         Admin = new array<string>();
         GunPresets = new array<string>();
         RespawnCoordinates = new array<string>();
-        PublicCoordinates = new array<string>();
     }
 
     static NexoDM_Config Load()
@@ -75,8 +72,6 @@ class NexoDM_Config
         config.MaxPlayers = NexoDM_Constants.DEFAULT_MAX_PLAYERS;
         config.RespawnCoordinates.Insert(NexoDM_Constants.DEFAULT_RESPAWN_COORD);
         config.RespawnRadius = NexoDM_Constants.DEFAULT_RESPAWN_RADIUS;
-        config.PublicCoordinates.Insert(NexoDM_Constants.DEFAULT_PUBLIC_COORD);
-        config.PublicRespawnRadius = NexoDM_Constants.DEFAULT_PUBLIC_RESPAWN_RADIUS;
         config.Autostart = NexoDM_Constants.DEFAULT_AUTOSTART;
         config.AutostartDelaySeconds = NexoDM_Constants.DEFAULT_AUTOSTART_DELAY;
         return config;
@@ -147,17 +142,7 @@ class NexoDM_Config
             valid = false;
         }
 
-        float publicRadius = 0.0;
-        if (!TryParsePositiveFloat(PublicRespawnRadius, publicRadius))
-        {
-            LogRule(NexoDM_Constants.RULE_RADIUS_INVALID, NexoDM_Constants.KEY_PUBLIC_RESPAWN_RADIUS);
-            valid = false;
-        }
-
         if (!ValidateCoordList(RespawnCoordinates, NexoDM_Constants.KEY_RESPAWN_COORDINATES))
-            valid = false;
-
-        if (!ValidateCoordList(PublicCoordinates, NexoDM_Constants.KEY_PUBLIC_COORDINATES))
             valid = false;
 
         return valid;
@@ -195,11 +180,6 @@ class NexoDM_Config
                 LogPlaceholder("RespawnCoordinate", RespawnCoordinates.Get(i));
         }
 
-        for (i = 0; i < PublicCoordinates.Count(); i = i + 1)
-        {
-            if (PublicCoordinates.Get(i) == NexoDM_Constants.DEFAULT_PUBLIC_COORD)
-                LogPlaceholder("PublicCoordinate", PublicCoordinates.Get(i));
-        }
     }
 
     // F-13/F-14 (WARN-1): direct, non-rate-limited log so EVERY placeholder field is reported at round
@@ -298,24 +278,10 @@ class NexoDM_Config
         return NexoDM_Constants.DEFAULT_RESPAWN_RADIUS_VALUE;
     }
 
-    float GetPublicRespawnRadius()
-    {
-        float parsed = 0.0;
-        if (TryParsePositiveFloat(PublicRespawnRadius, parsed))
-            return parsed;
-        return NexoDM_Constants.DEFAULT_PUBLIC_RESPAWN_RADIUS_VALUE;
-    }
-
     array<vector> GetRespawnCoords()
     {
         EnsureArrays();
         return ParseCoordListWithFallback(RespawnCoordinates, NexoDM_Constants.DEFAULT_RESPAWN_COORD);
-    }
-
-    array<vector> GetPublicRespawnCoords()
-    {
-        EnsureArrays();
-        return ParseCoordListWithFallback(PublicCoordinates, NexoDM_Constants.DEFAULT_PUBLIC_COORD);
     }
 
     protected void EnsureArrays()
@@ -326,8 +292,6 @@ class NexoDM_Config
             GunPresets = new array<string>();
         if (!RespawnCoordinates)
             RespawnCoordinates = new array<string>();
-        if (!PublicCoordinates)
-            PublicCoordinates = new array<string>();
     }
 
     protected static bool EnsureProfileDirectory()

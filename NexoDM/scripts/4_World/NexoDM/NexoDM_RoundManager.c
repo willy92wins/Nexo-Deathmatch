@@ -2,8 +2,6 @@ class NexoDM_PlayerEntry : Managed
 {
     string steamId;
     int role;
-    int promptState;
-    int tier;
     int kills;
     int assists;
     int deaths;
@@ -18,8 +16,6 @@ class NexoDM_PlayerEntry : Managed
     {
         steamId = string.Empty;
         role = NexoDM_Role.NONE;
-        promptState = NexoDM_PromptState.NONE;
-        tier = 0;
         kills = 0;
         assists = 0;
         deaths = 0;
@@ -33,39 +29,11 @@ class NexoDM_PlayerEntry : Managed
 }
 
 /*
-S1/S2 state matrix:
-Current | Event | Destination | Notes
-IDLE | admin start with valid config | VOTING | resets entries, prompts no-admins.
-IDLE | admin start with invalid config | IDLE | fail closed.
-VOTING | vote YES with connected participant slots free | VOTING | role PARTICIPANT, prompt ANSWERED.
-VOTING | vote YES with connected participant slots full | VOTING | role PUBLIC, prompt ANSWERED.
-VOTING | vote NO | VOTING | role PUBLIC, prompt ANSWERED.
-VOTING | vote timeout | ACTIVE | pending entries become PUBLIC.
-VOTING | connected participants reach MaxPlayers | ACTIVE | voting closes early.
-ACTIVE | late join without entry | ACTIVE | role PUBLIC, no prompt.
-ACTIVE | reconnect with entry | ACTIVE | existing role reapplied.
-ENDED | any join or vote | ENDED | ignored until reset timer returns to IDLE.
-
-S2 voting matrix:
-Input | Final role | Final promptState
-YES with slot | PARTICIPANT | ANSWERED
-YES when full | PUBLIC | ANSWERED
-NO | PUBLIC | ANSWERED
-timeout without response | PUBLIC | ANSWERED
-reconnect mid-VOTING with pending entry | unchanged until answer | PROMPT_PENDING
-late-join mid-ACTIVE | PUBLIC | NONE
-
-S2 lifecycle matrix:
-State | Event | Admin | Result
-IDLE | ready/reconnect | yes or no | no entry mutation.
-VOTING | ready | yes | no prompt, no entry mutation.
-VOTING | ready | no | create or reuse prompt pending, open dialog.
-VOTING | reconnect | yes | no prompt, no entry mutation.
-VOTING | reconnect | no | reapply role; reopen only if prompt pending.
-ACTIVE | ready/reconnect | yes | no entry mutation.
-ACTIVE | ready/reconnect | no with entry | reapply existing role.
-ACTIVE | ready/reconnect | no without entry | create PUBLIC without prompt.
-ENDED | ready/reconnect | yes or no | no entry mutation.
+Round flow:
+IDLE | admin start or autostart with valid config | ACTIVE | every connected player becomes a participant, BeginRound.
+IDLE | start with invalid config | IDLE | fail closed.
+ACTIVE | connect or reconnect without entry | ACTIVE | role PARTICIPANT.
+ACTIVE | timeout or admin stop | ENDED | then IDLE.
 */
 class NexoDM_RoundManager : Managed
 {
@@ -74,17 +42,11 @@ class NexoDM_RoundManager : Managed
     protected int m_State;
     protected ref NexoDM_Config m_Config;
     protected ref Timer m_RoundTimer;
-    protected ref Timer m_VotingTimer;
     protected ref Timer m_EndStateTimer;
     protected ref Timer m_FreezeTimer;
     protected ref Timer m_AutostartTimer;
     protected ref map<string, ref NexoDM_PlayerEntry> m_PlayerEntries;
     protected ref map<string, int> m_WarnLog;
-    // F-02: steamIds of participants skipped by round-end cleanup (dead/absent). Lives OUTSIDE
-    // m_PlayerEntries because that map is cleared by ResetStats 0.1s after the round ends, well
-    // before the dead-at-end player respawns; consumed (consume-once) at EVERY player entry
-    // point: OnPlayerRespawn, OnPlayerReady, OnPlayerReconnect (GG-02).
-    protected ref set<string> m_PendingPublicCleanup;
     // GG-01v5: steamIds whose fresh respawn character was equipped DURING creation
     // (StartingEquipSetup -> EquipParticipantAtBirth). OnPlayerRespawn consumes this to skip the
     // post-creation teleport+wipe+equip path that desynced the loadout to observers.
@@ -96,13 +58,11 @@ class NexoDM_RoundManager : Managed
 #ifdef SERVER
         m_State = NexoDM_State.IDLE;
         m_RoundTimer = new Timer();
-        m_VotingTimer = new Timer();
         m_EndStateTimer = new Timer();
         m_FreezeTimer = new Timer();
         m_AutostartTimer = new Timer();
         m_PlayerEntries = new map<string, ref NexoDM_PlayerEntry>;
         m_WarnLog = new map<string, int>;
-        m_PendingPublicCleanup = new set<string>();
         m_GG_BirthEquipped = new set<string>();
         m_SpawnRoundRobinIdx = 0;
 #endif
@@ -184,15 +144,13 @@ class NexoDM_RoundManager : Managed
         m_Config.LogPlaceholderWarnings();
 
         ResetStats();
-        // F-02: a new round invalidates any leftover pending public-cleanup from the prior round.
-        m_PendingPublicCleanup.Clear();
         // F-20v2: reset the "last spawn coord used" tracker at round start (spawn pick is now
         // uniform-random, not round-robin — see PickRandomSpawn).
         m_SpawnRoundRobinIdx = 0;
-        m_State = NexoDM_State.VOTING;
-        StartVotingTimer();
-        PromptConnectedPlayers();
-        string startedMessage = "round entered voting";
+        EnrollConnectedParticipants();
+        m_State = NexoDM_State.ACTIVE;
+        BeginRound();
+        string startedMessage = "round entered active";
         LogRound(startedMessage);
 #endif
     }
@@ -217,45 +175,33 @@ class NexoDM_RoundManager : Managed
             return;
         }
 
-        // Capture state before flipping to ENDED: only a round that reached ACTIVE has
-        // teleported/equipped participants, so the I4 cleanup must not run for a VOTING stop
-        // (it would wipe players' real loot that was never replaced by a gungame loadout).
+        // Capture state before flipping to ENDED: only a round that reached ACTIVE announces a winner.
         bool wasActive = (m_State == NexoDM_State.ACTIVE);
 
         StopTimer(m_RoundTimer);
-        StopTimer(m_VotingTimer);
         StopTimer(m_EndStateTimer);
         StopTimer(m_FreezeTimer);
 
         m_State = NexoDM_State.ENDED;
         RevertFreezeIfApplied();
 
-        // Close any join dialog still open on a client (admin stop during VOTING leaves them
-        // open until the client-side 60s timer expires; BroadcastOpenDialog cannot close them).
-        CloseOrphanedDialogs();
-
         if (wasActive)
         {
-            // I3 winner announce + I4 cleanup must run while entries still exist; ReturnToIdle
+            // Winner announce must run while entries still exist; ReturnToIdle
             // clears them 0.1s after ScheduleIdleReset below.
             AnnounceWinner(reason, winnerSteamId);
-            CleanupParticipantsToPublic();
         }
-        else
+
+        // Drop the synced participant role so the scoreboard gate closes with the round.
+        EnsureCollections();
+        int roleIndex = 0;
+        for (roleIndex = 0; roleIndex < m_PlayerEntries.Count(); roleIndex = roleIndex + 1)
         {
-            // GG-06: a stop during VOTING never ran BeginRound/CleanupParticipantsToPublic, but
-            // voters already carry a synced role from OnPlayerVote. Reset it so no client keeps
-            // the tier card / openable scoreboard into IDLE. Tier/crown never synced in VOTING.
-            EnsureCollections();
-            int roleIndex = 0;
-            for (roleIndex = 0; roleIndex < m_PlayerEntries.Count(); roleIndex = roleIndex + 1)
+            NexoDM_PlayerEntry roleEntry = m_PlayerEntries.GetElement(roleIndex);
+            if (roleEntry && roleEntry.role != NexoDM_Role.NONE)
             {
-                NexoDM_PlayerEntry roleEntry = m_PlayerEntries.GetElement(roleIndex);
-                if (roleEntry && roleEntry.role != NexoDM_Role.NONE)
-                {
-                    string roleSteamId = m_PlayerEntries.GetKey(roleIndex);
-                    ApplyRoleToOnlinePlayer(roleSteamId, NexoDM_Role.NONE);
-                }
+                string roleSteamId = m_PlayerEntries.GetKey(roleIndex);
+                ApplyRoleToOnlinePlayer(roleSteamId, NexoDM_Role.NONE);
             }
         }
 
@@ -285,25 +231,6 @@ class NexoDM_RoundManager : Managed
         {
             NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
             if (entry && entry.role == NexoDM_Role.PARTICIPANT)
-            {
-                string steamId = m_PlayerEntries.GetKey(index);
-                ids.Insert(steamId);
-            }
-        }
-#endif
-        return ids;
-    }
-
-    array<string> GetPublicIds()
-    {
-        array<string> ids = new array<string>();
-#ifdef SERVER
-        EnsureCollections();
-        int index = 0;
-        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
-        {
-            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
-            if (entry && entry.role == NexoDM_Role.PUBLIC)
             {
                 string steamId = m_PlayerEntries.GetKey(index);
                 ids.Insert(steamId);
@@ -346,32 +273,6 @@ class NexoDM_RoundManager : Managed
         return count;
     }
 
-    int CountPublic()
-    {
-        int count = 0;
-#ifdef SERVER
-        EnsureCollections();
-        int index = 0;
-        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
-        {
-            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
-            if (entry && entry.role == NexoDM_Role.PUBLIC)
-                count = count + 1;
-        }
-#endif
-        return count;
-    }
-
-    bool HasPromptPending(string steamId)
-    {
-#ifdef SERVER
-        NexoDM_PlayerEntry entry = GetEntry(steamId);
-        if (entry && entry.promptState == NexoDM_PromptState.PROMPT_PENDING)
-            return true;
-#endif
-        return false;
-    }
-
     bool IsAdminSteamId(string steamId)
     {
 #ifdef SERVER
@@ -402,140 +303,6 @@ class NexoDM_RoundManager : Managed
 #ifdef SERVER
         EnsureCollections();
         m_PlayerEntries.Clear();
-#endif
-    }
-
-    void OnPlayerVote(string steamId, bool yes)
-    {
-#ifdef SERVER
-        if (!CanMutateState())
-            return;
-
-        if (m_State != NexoDM_State.VOTING)
-            return;
-
-        if (!EnsureConfig())
-            return;
-
-        NexoDM_PlayerEntry entry = GetEntry(steamId);
-        if (!entry)
-            return;
-
-        if (entry.promptState != NexoDM_PromptState.PROMPT_PENDING)
-            return;
-
-        // GG-04: a dead player (pre-respawn) can still have the join prompt open. Refuse the vote
-        // and keep the entry PROMPT_PENDING, so the NEW character gets the prompt re-broadcast on
-        // ready (VOTING branch of OnPlayerReady); accepting would let BeginRound process a corpse.
-        // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
-        PlayerBase voter = FindPlayerBySteamId(steamId);
-        if (!voter || !voter.IsAlive())
-        {
-            string deadVoteDetail = "vote rejected: voter dead or absent";
-            LogRule(NexoDM_Constants.RULE_VOTE_BAD_STATE, deadVoteDetail);
-            return;
-        }
-
-        bool isAdmin = IsAdminSteamId(steamId);
-        if (yes)
-        {
-            // R2: NexoDM_Config.GetMaxPlayers() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:194.
-            if (CountParticipants() < m_Config.GetMaxPlayers())
-            {
-                entry.role = NexoDM_Role.PARTICIPANT;
-            }
-            else if (isAdmin)
-            {
-                // Admin voted yes on a full round: stay NONE (noop), never forced to public.
-                entry.role = NexoDM_Role.NONE;
-            }
-            else
-            {
-                entry.role = NexoDM_Role.PUBLIC;
-                // B4: notify the late voter the match is full, via the 3_Game announce bus
-                // (4_World cannot call LBChatHandler in 5_Mission directly).
-                PlayerIdentity fullIdentity = GetIdentityForSteamId(steamId);
-                if (fullIdentity)
-                {
-                    string fullMsg = NexoDM_Constants.MSG_GAME_FULL;
-                    NexoDM_AnnounceBus.Raise(fullIdentity, fullMsg, false);
-                }
-                string fullDetail = "yes vote converted to public; match full notice sent";
-                LogRule(NexoDM_Constants.RULE_B4_GAME_FULL_CHAT_DEFERRED, fullDetail);
-            }
-        }
-        else
-        {
-            if (isAdmin)
-            {
-                // Admin declined: stay NONE (noop), not public.
-                entry.role = NexoDM_Role.NONE;
-            }
-            else
-            {
-                entry.role = NexoDM_Role.PUBLIC;
-            }
-        }
-
-        entry.promptState = NexoDM_PromptState.ANSWERED;
-        ApplyRoleToOnlinePlayer(steamId, entry.role);
-
-        // R2: NexoDM_Config.GetMaxPlayers() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:194.
-        if (CountParticipants() >= m_Config.GetMaxPlayers())
-            CloseVotingEarly();
-#endif
-    }
-
-    void OnVotingClosed()
-    {
-#ifdef SERVER
-        if (!CanMutateState())
-            return;
-
-        if (m_State != NexoDM_State.VOTING)
-            return;
-
-        StopTimer(m_VotingTimer);
-        EnsurePublicEntriesForConnectedPlayers();
-
-        // F-08 (WARN-2): no point running a full RoundDuration with nobody playing. Abort if voting
-        // closed with zero participants. Done BEFORE the pending->answered loop below so EndRound's
-        // CloseOrphanedDialogs still sees PROMPT_PENDING entries and closes those clients' join dialogs.
-        if (CountParticipants() == 0)
-        {
-            string emptyMessage = "voting closed with 0 participants; aborting round";
-            LogRound(emptyMessage);
-            string noPartReason = "no_participants";
-            string emptyWinner = string.Empty;
-            EndRound(noPartReason, emptyWinner);
-            return;
-        }
-
-        int index = 0;
-        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
-        {
-            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
-            if (entry && entry.promptState == NexoDM_PromptState.PROMPT_PENDING)
-            {
-                string steamId = m_PlayerEntries.GetKey(index);
-                if (IsAdminSteamId(steamId))
-                {
-                    // Admin who never answered before voting closed: noop (NONE), not public.
-                    entry.role = NexoDM_Role.NONE;
-                }
-                else
-                {
-                    entry.role = NexoDM_Role.PUBLIC;
-                }
-                entry.promptState = NexoDM_PromptState.ANSWERED;
-                ApplyRoleToOnlinePlayer(steamId, entry.role);
-            }
-        }
-
-        m_State = NexoDM_State.ACTIVE;
-        BeginRound();
-        string activeMessage = "round entered active";
-        LogRound(activeMessage);
 #endif
     }
 
@@ -578,9 +345,8 @@ class NexoDM_RoundManager : Managed
                 continue;
             }
 
-            // GG-04: never teleport/equip/freeze a corpse (a voter can die during VOTING). The
-            // entry keeps its voted role; the NEW character is routed into the round by the
-            // OnClientNewEvent respawn path (GG-01).
+            // GG-04: never teleport/equip/freeze a corpse. The NEW character is routed into the
+            // round by the OnClientNewEvent respawn path (GG-01).
             // R2: Object.IsAlive() in scripts/3_game/entities/object.c:523.
             if (!player.IsAlive())
             {
@@ -590,12 +356,12 @@ class NexoDM_RoundManager : Managed
                 continue;
             }
 
-            vector spawn = PickRandomSpawn(entry.role);
+            vector spawn = PickRandomSpawn();
             // R2: Object.SetPosition(vector) in scripts/3_game/entities/object.c:300.
             player.SetPosition(spawn);
 
             WipeInventory(player);
-            EquipPlayer(player, entry.role, entry.tier);
+            EquipPlayer(player, entry.role);
 
             if (entry.role == NexoDM_Role.PARTICIPANT)
             {
@@ -604,8 +370,6 @@ class NexoDM_RoundManager : Managed
                 // R2: Object.SetAllowDamage(bool) in scripts/3_game/entities/object.c:1192.
                 player.SetAllowDamage(false);
             }
-
-            SetTierSync(player, entry.tier);
 
             if (entry.role == NexoDM_Role.PARTICIPANT)
             {
@@ -625,64 +389,6 @@ class NexoDM_RoundManager : Managed
         float roundSeconds = roundDuration;
         string timeoutCallback = "OnRoundTimeout";
         m_RoundTimer.Run(roundSeconds, this, timeoutCallback, NULL, false);
-#endif
-    }
-
-    void ChangeTier(PlayerBase player, int delta)
-    {
-#ifdef SERVER
-        if (!CanMutateState())
-            return;
-
-        if (!player)
-            return;
-
-        if (!EnsureConfig())
-            return;
-
-        PlayerIdentity id = player.GetIdentity();
-        if (!id)
-            return;
-
-        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
-        string steamId = id.GetPlainId();
-        if (steamId == string.Empty)
-            return;
-
-        NexoDM_PlayerEntry entry = GetEntry(steamId);
-        if (!entry)
-            return;
-
-        if (entry.role != NexoDM_Role.PARTICIPANT)
-            return;
-
-        // R2: NexoDM_Config.GetGunPresets() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:163.
-        array<string> guns = m_Config.GetGunPresets();
-        if (!guns)
-            return;
-
-        int maxIndex = guns.Count() - 1;
-        if (maxIndex < 0)
-            return;
-
-        int newTier = entry.tier + delta;
-        if (newTier < 0)
-            newTier = 0;
-        if (newTier > maxIndex)
-            newTier = maxIndex;
-
-        // No-op when the clamp produced no change (e.g. +1 already at max tier): skip the
-        // wasted full weapon re-equip. Victory at max tier is handled in OnPlayerKilled.
-        if (newTier == entry.tier)
-            return;
-
-        entry.tier = newTier;
-        ApplyTierLoadout(player, newTier);
-        SetTierSync(player, newTier);
-
-        string ruleId = "TIER_CHANGED";
-        string detail = "participant tier changed";
-        LogRule(ruleId, detail);
 #endif
     }
 
@@ -825,7 +531,7 @@ class NexoDM_RoundManager : Managed
 
         // E2 fallback: a one-hit knife death (scripted SetHealth 0) reports EEKilled killer as
         // null OR as the victim itself (self-attributed scripted death), so both cases recover
-        // the recorded knife attacker to credit the kill (kills counter / +1 tier / victory).
+        // the recorded knife attacker to credit the kill (kills counter).
         if ((killerId == string.Empty || killerId == victimId) && victimEntry.lastDamageWasKnife && victimEntry.lastKnifeKillerId != string.Empty)
         {
             killerId = victimEntry.lastKnifeKillerId;
@@ -847,8 +553,6 @@ class NexoDM_RoundManager : Managed
             }
         }
 
-        bool victory = false;
-        string winnerId = string.Empty;
         if (killerPlayer && killerId != string.Empty && killerId != victimId)
         {
             NexoDM_PlayerEntry killerEntry = GetEntry(killerId);
@@ -857,40 +561,11 @@ class NexoDM_RoundManager : Managed
                 killerEntry.kills = killerEntry.kills + 1;
                 string killDetail = "participant kill recorded";
                 LogRule(NexoDM_Constants.RULE_KILL_RECORDED, killDetail);
-
-                int maxIndex = GetMaxTierIndex();
-                // I1: a kill made WHILE already at the top tier wins (the +1 would clamp to a no-op).
-                if (maxIndex >= 0 && killerEntry.tier >= maxIndex)
-                {
-                    victory = true;
-                    winnerId = killerId;
-                    string victoryDetail = "victory kill at max tier";
-                    LogRule(NexoDM_Constants.RULE_VICTORY_RECORDED, victoryDetail);
-                }
-                else
-                {
-                    ChangeTier(killerPlayer, 1);
-                }
                 AwardAssists(victimEntry, killerId);
             }
         }
 
-        if (victimEntry.lastDamageWasKnife)
-        {
-            int gapMs = GetGame().GetTime() - victimEntry.lastKnifeHitTimeMs;   // S5.5 KB1-B obs
-            int newTier = victimEntry.tier - 1;
-            if (newTier < 0)
-                newTier = 0;
-
-            victimEntry.tier = newTier;
-            // Keep the victim's synced tier coherent (leader recalc / HUD); respawn re-syncs anyway.
-            SetTierSync(victim, newTier);
-            string knifeDetail = "knife death tier penalty recorded gap_ms=";   // S5.5 KB1-B obs
-            knifeDetail = knifeDetail + gapMs.ToString();                        // S5.5 KB1-B obs
-            LogRule(NexoDM_Constants.RULE_KNIFE_DEATH_RECORDED, knifeDetail);
-        }
-
-        // S5.5 KB1-A: consume-once - evita -1 stale entre kill y respawn (P2-2).
+        // S5.5 KB1-A: consume-once - evita un credito stale entre kill y respawn (P2-2).
         victimEntry.lastDamageWasKnife = false;
         victimEntry.lastKnifeKillerId = string.Empty;
         // Option A: consume the downed-credit attribution too, so it is not reused on a later death.
@@ -902,24 +577,17 @@ class NexoDM_RoundManager : Managed
         if (victimEntry.damagedBy)
             victimEntry.damagedBy.Clear();
 
-        // Anti-loot (gungame integrity): strip firearms/mags/ammo from the corpse now and
-        // sweep any dropped on the ground shortly after, so the tier weapon can't be looted
-        // to skip progression. Participants only. The knife (everyone has one), clothing and
+        // Anti-loot: strip firearms/mags/ammo from the corpse now and
+        // sweep any dropped on the ground shortly after, so the round weapon can't be looted.
+        // Participants only. The knife (everyone has one), clothing and
         // the body are kept - WipeWeaponsOnly preserves the knife via ShouldDeleteWeaponLoadoutItem.
         vector deathPos = victim.GetPosition();
         WipeWeaponsOnly(victim);
         // R2: ScriptCallQueue.CallLater(func,int,bool,...) pattern in scripts/2_gamelib/tools.c:46.
         GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathSite, 2000, false, deathPos);
         // Final cleanup: delete the corpse and re-sweep stray weapons once physics has settled.
-        // Runs regardless of later round-state changes (arena hygiene, no lootable tier weapons).
+        // Runs regardless of later round-state changes (arena hygiene, no lootable round weapons).
         GetGame().GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupDeathFinal, 10000, false, victim, deathPos);
-
-        // I1: end the round when this kill was a victory, after all stats/penalties are finalized.
-        if (victory)
-        {
-            string victoryReason = "victory";
-            EndRound(victoryReason, winnerId);
-        }
 #endif
     }
 
@@ -1034,28 +702,6 @@ class NexoDM_RoundManager : Managed
         if (steamId == string.Empty)
             return;
 
-        // F-02: a participant dead/absent at round end was recorded in m_PendingPublicCleanup
-        // (CleanupParticipantsToPublic only teleports/wipes the living). Finish their I4 here on their
-        // post-round respawn. The set survives ResetStats (the entry does NOT, so this is consumed from
-        // the set BEFORE the entry lookup below). Consume-once: removed on use.
-        if (m_PendingPublicCleanup)
-        {
-            int pendingIdx = m_PendingPublicCleanup.Find(steamId);
-            if (pendingIdx >= 0)
-            {
-                m_PendingPublicCleanup.Remove(pendingIdx);
-                if (EnsureConfig())
-                {
-                    vector publicSpawn = PickRandomSpawn(NexoDM_Role.PUBLIC);
-                    player.SetPosition(publicSpawn);
-                    WipeInventory(player);
-                    EquipPlayer(player, NexoDM_Role.PUBLIC, 0);
-                    SetTierSync(player, 0);
-                }
-                return;
-            }
-        }
-
         NexoDM_PlayerEntry entry = GetEntry(steamId);
         if (!entry)
             return;
@@ -1088,13 +734,12 @@ class NexoDM_RoundManager : Managed
 
         if (!bornEquipped)
         {
-            vector spawn = PickRandomSpawn(entry.role);
+            vector spawn = PickRandomSpawn();
             // R2: Object.SetPosition(vector) in scripts/3_game/entities/object.c:300.
             player.SetPosition(spawn);
             WipeInventory(player);
-            EquipPlayer(player, entry.role, entry.tier);
+            EquipPlayer(player, entry.role);
         }
-        SetTierSync(player, entry.tier);
 
         if (!entry.damagedBy)
             entry.damagedBy = new set<string>();
@@ -1111,68 +756,7 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
-    void ApplyTierLoadout(PlayerBase player, int tier)
-    {
-#ifdef SERVER
-        if (!CanMutateState())
-            return;
-
-        if (!player)
-            return;
-
-        if (!m_Config)
-            return;
-
-        // F-06: resolve the gun preset BEFORE wiping the current weapon, so a failed loader/preset
-        // (e.g. a misconfigured tier) does not leave the player disarmed mid-fight after a tier-up.
-        // R2: NexoDM_Config.GetGunPresets() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:163.
-        array<string> guns = m_Config.GetGunPresets();
-        if (!guns)
-            return;
-
-        if (tier < 0)
-            return;
-
-        if (tier >= guns.Count())
-            return;
-
-        string gunName = guns.Get(tier);
-        if (!LB_PresetLoader.Get)
-        {
-            LogRule("PRESET_LOADER_UNAVAILABLE_TIER", gunName);
-            return;
-        }
-
-        // R2: LB_PresetLoader.GetPreset(string) in LBmaster_Core/scripts/4_World/LBmaster_Core/Config/LB_PresetLoader.c:146.
-        LB_PresetBase gunPreset = LB_PresetLoader.Get.GetPreset(gunName);
-        if (!gunPreset)
-        {
-            LogRule("PRESET_RESOLVE_FAILED_TIER", gunName);
-            return;
-        }
-
-        // Only now that the new preset is resolved do we destroy the previous tier weapon.
-        WipeWeaponsOnly(player);
-        // Free the hands so the tier weapon spawns INTO them. LBmaster spawnIn:"hands"
-        // (LB_ItemPreset.CreateInHands, LB_ItemPreset.c:144-148) falls back to the inventory when the
-        // hands are occupied; after a KNIFE kill the knife is still held (WipeWeaponsOnly keeps it),
-        // which left the new weapon in the bag - unchambered and unbound (GG_ReadyWeapon read the
-        // knife in hands and bailed). Moving the held item to the inventory keeps its hotbar shortcut.
-        // R2: HumanInventory.GetEntityInHands() in scripts/3_game/systems/inventory/humaninventory.c:16.
-        EntityAI heldBeforeSpawn = player.GetHumanInventory().GetEntityInHands();
-        if (heldBeforeSpawn)
-        {
-            // R2: GameInventory.TakeEntityToInventory(InventoryMode,FindInventoryLocationType,EntityAI) in scripts/3_game/systems/inventory/inventory.c:1012; InventoryMode.SERVER :26.
-            player.GetInventory().TakeEntityToInventory(InventoryMode.SERVER, FindInventoryLocationType.ANY, heldBeforeSpawn);
-        }
-        // R2: LB_PresetBase.SpawnPreset(PlayerBase,EntityAI) in LBmaster_Core/scripts/4_World/LBmaster_Core/Struct/LB_PresetBase.c:138.
-        gunPreset.SpawnPreset(player, player);
-        // Chamber + load the freshly spawned tier weapon and bind it to the hotbar (see MakeWeaponReady).
-        MakeWeaponReady(player);
-#endif
-    }
-
-    // Makes the freshly-spawned tier weapon ready: chamber (or fully load an EMPTY internal magazine for
+    // Makes the freshly-spawned weapon ready: chamber (or fully load an EMPTY internal magazine for
     // shotguns/Mosin) + hotbar bind, DEFERRED one tick (GG_ReadyWeapon). Doing it synchronously right
     // after SpawnPreset is unsafe twice over: (1) on a participant birth-equip MakeWeaponReady runs
     // inside MissionServer.StartingEquipSetup (character creation), where a sync quickbar write broke
@@ -1191,7 +775,7 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
-    // Deferred target of MakeWeaponReady (next tick = stable FSM): chamber the in-hands tier weapon (or
+    // Deferred target of MakeWeaponReady (next tick = stable FSM): chamber the in-hands weapon (or
     // fully load an EMPTY internal magazine + chamber with one consistent ammo type) and bind it to
     // hotbar slot 1. Server-only.
     void GG_ReadyWeapon(PlayerBase player)
@@ -1205,8 +789,8 @@ class NexoDM_RoundManager : Managed
         if (!player.IsAlive())
             return;
 
-        // The tier weapon usually spawns in hands, but on a knife-kill the hands move (ApplyTierLoadout)
-        // can lag a tick so LBmaster may have placed the weapon in the inventory. Fall back to scanning
+        // The weapon usually spawns in hands, but LBmaster may have placed it in the inventory.
+        // Fall back to scanning
         // the player for the (single, post-wipe) Weapon_Base so it is chambered + hotbar-bound wherever
         // it landed. R2: Man.GetEntityInHands() in scripts/3_game/entities/man.c:81.
         Weapon_Base wpn = Weapon_Base.Cast(player.GetEntityInHands());
@@ -1275,7 +859,7 @@ class NexoDM_RoundManager : Managed
     }
 
     // Returns the first Weapon_Base carried by the player (hands, attachments or cargo). After
-    // WipeWeaponsOnly the only firearm on a participant is the freshly spawned tier weapon, so this
+    // WipeWeaponsOnly the only firearm on a participant is the freshly spawned weapon, so this
     // reliably locates it even when LBmaster placed it in the inventory instead of the hands
     // (knife-kill: the knife occupied the hands). Server-only.
     protected Weapon_Base FindPlayerWeapon(PlayerBase player)
@@ -1303,33 +887,6 @@ class NexoDM_RoundManager : Managed
         return null;
     }
 
-    void CloseVotingEarly()
-    {
-#ifdef SERVER
-        if (m_State != NexoDM_State.VOTING)
-            return;
-
-        OnVotingClosed();
-#endif
-    }
-
-    // GG-08: leader crowns only recompute on tier changes (SetTierSync), so a leader logging out
-    // keeps a stale crown until someone's tier moves. Called deferred (+1s) from
-    // MissionServer.PlayerDisconnected, after the engine removed the player from the world, so
-    // IsEntryOnline re-evaluates without the leaver.
-    void OnPlayerGoneRecalculate()
-    {
-#ifdef SERVER
-        if (!CanMutateState())
-            return;
-
-        if (m_State != NexoDM_State.ACTIVE)
-            return;
-
-        RecalculateLeaders();
-#endif
-    }
-
     void OnPlayerReady(PlayerIdentity identity, PlayerBase player)
     {
 #ifdef SERVER
@@ -1344,63 +901,23 @@ class NexoDM_RoundManager : Managed
         if (steamId == string.Empty)
             return;
 
-        // F-02/GG-02 (R7): the pending public-cleanup must be consumed at EVERY player entry point.
-        // A participant absent at round end who relogs with a new session (alive persisted
-        // character) arrives via ClientReady; without this consume they keep the tier loadout
-        // permanently and the stale pending fires a surprise wipe on an unrelated future
-        // respawn/reconnect. Placed BEFORE the IDLE/ENDED early-return: post-round state is IDLE.
-        // Consume-once: removed on use. No role re-sync needed here — a ClientReady character is
-        // re-created on connect, so its syncvars start clean (unlike the Reconnect path).
-        if (m_PendingPublicCleanup)
-        {
-            int pendingIdx = m_PendingPublicCleanup.Find(steamId);
-            if (pendingIdx >= 0)
-            {
-                m_PendingPublicCleanup.Remove(pendingIdx);
-                if (EnsureConfig())
-                {
-                    vector publicSpawn = PickRandomSpawn(NexoDM_Role.PUBLIC);
-                    player.SetPosition(publicSpawn);
-                    WipeInventory(player);
-                    EquipPlayer(player, NexoDM_Role.PUBLIC, 0);
-                    SetTierSync(player, 0);
-                }
-                return;
-            }
-        }
-
         if (m_State == NexoDM_State.IDLE || m_State == NexoDM_State.ENDED)
             return;
-
-        if (m_State == NexoDM_State.VOTING)
-        {
-            NexoDM_PlayerEntry votingEntry = GetOrCreateEntry(steamId);
-            if (votingEntry.promptState == NexoDM_PromptState.NONE)
-            {
-                votingEntry.role = NexoDM_Role.NONE;
-                votingEntry.promptState = NexoDM_PromptState.PROMPT_PENDING;
-            }
-
-            ApplyRoleToPlayer(player, votingEntry.role);
-            if (votingEntry.promptState == NexoDM_PromptState.PROMPT_PENDING)
-                BroadcastOpenDialog(identity, GetVotingSecondsLeft());
-            return;
-        }
 
         if (m_State == NexoDM_State.ACTIVE)
         {
             NexoDM_PlayerEntry activeEntry = GetEntry(steamId);
             if (!activeEntry)
             {
-                // Admin joining mid-round without an entry: noop, never forced to public.
-                if (IsAdminSteamId(steamId))
-                    return;
-
                 activeEntry = GetOrCreateEntry(steamId);
-                activeEntry.role = NexoDM_Role.PUBLIC;
-                activeEntry.promptState = NexoDM_PromptState.NONE;
-                // B6: late-join non-admin -> public with ClothingPreset only (no wipe, no teleport).
-                EquipPlayer(player, NexoDM_Role.PUBLIC, activeEntry.tier);
+                activeEntry.role = NexoDM_Role.PARTICIPANT;
+                if (player.IsAlive() && EnsureConfig())
+                {
+                    vector spawn = PickRandomSpawn();
+                    player.SetPosition(spawn);
+                    WipeInventory(player);
+                    EquipPlayer(player, activeEntry.role);
+                }
             }
 
             ApplyRoleToPlayer(player, activeEntry.role);
@@ -1422,164 +939,34 @@ class NexoDM_RoundManager : Managed
         if (steamId == string.Empty)
             return;
 
-        // F-02: an absent-at-round-end participant recorded in m_PendingPublicCleanup may come back via
-        // reconnect (alive) rather than respawn. Consume the pending here too -> teleport + clothe public.
-        if (m_PendingPublicCleanup)
-        {
-            int pendingIdx = m_PendingPublicCleanup.Find(steamId);
-            if (pendingIdx >= 0)
-            {
-                m_PendingPublicCleanup.Remove(pendingIdx);
-                if (EnsureConfig())
-                {
-                    vector publicSpawn = PickRandomSpawn(NexoDM_Role.PUBLIC);
-                    player.SetPosition(publicSpawn);
-                    WipeInventory(player);
-                    EquipPlayer(player, NexoDM_Role.PUBLIC, 0);
-                    SetTierSync(player, 0);
-                }
-                // GG-07: the reconnecting character is the SAME server-side object (logout window),
-                // so it still carries the ended round's role/leader syncvars. Reset both even when
-                // config is unavailable; ApplyRoleToPlayer's SetSynchDirty covers the leader write.
-                player.m_GG_IsLeader = 0;
-                ApplyRoleToPlayer(player, NexoDM_Role.NONE);
-                return;
-            }
-        }
-
         NexoDM_PlayerEntry entry = GetEntry(steamId);
         if (entry)
         {
             ApplyRoleToPlayer(player, entry.role);
-            // F5: restore synced tier on reconnect (a fresh PlayerBase starts m_GG_Tier=0).
             if (entry.role == NexoDM_Role.PARTICIPANT && m_State == NexoDM_State.ACTIVE)
             {
-                SetTierSync(player, entry.tier);
-                // F-07: re-equip the tier loadout so the reconnected participant's inventory matches
-                // their synced tier (otherwise they keep whatever the character persisted, diverging
-                // from data/HUD). [verify in-game]: confirm reconnect timing accepts inventory ops
-                // here and that this does not double with an engine-restored loadout.
+                // F-07: re-equip so the reconnected participant's inventory matches the round loadout.
                 if (EnsureConfig())
                 {
                     WipeInventory(player);
-                    EquipPlayer(player, entry.role, entry.tier);
+                    EquipPlayer(player, entry.role);
                 }
             }
-            if (m_State == NexoDM_State.VOTING && entry.promptState == NexoDM_PromptState.PROMPT_PENDING)
-                BroadcastOpenDialog(identity, GetVotingSecondsLeft());
             return;
         }
 
         if (m_State == NexoDM_State.ACTIVE)
         {
-            // Admin reconnecting mid-round without an entry: noop, never forced to public.
-            if (IsAdminSteamId(steamId))
-                return;
-
             entry = GetOrCreateEntry(steamId);
-            entry.role = NexoDM_Role.PUBLIC;
-            entry.promptState = NexoDM_PromptState.NONE;
-            // B6: late-join (reconnect, no entry) non-admin -> public with ClothingPreset only.
-            EquipPlayer(player, NexoDM_Role.PUBLIC, entry.tier);
+            entry.role = NexoDM_Role.PARTICIPANT;
+            if (player.IsAlive() && EnsureConfig())
+            {
+                vector spawn = PickRandomSpawn();
+                player.SetPosition(spawn);
+                WipeInventory(player);
+                EquipPlayer(player, entry.role);
+            }
             ApplyRoleToPlayer(player, entry.role);
-        }
-#endif
-    }
-
-    void BroadcastOpenDialog(PlayerIdentity recipient, int secondsLeft)
-    {
-#ifdef SERVER
-        if (!recipient)
-        {
-            return;
-        }
-
-        if (secondsLeft <= 1)
-        {
-            LogRule("OPEN_DIALOG_VOTING_CLOSING", "open dialog skipped because voting is closing");
-            return;
-        }
-
-        if (secondsLeft < 0)
-            secondsLeft = 0;
-
-        // R2: PlayerIdentity.GetPlayer() in scripts/3_game/gameplay.c:374-375.
-        PlayerBase targetPlayer = PlayerBase.Cast(recipient.GetPlayer());
-        if (!targetPlayer)
-        {
-            // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
-            string steamId = recipient.GetPlainId();
-            targetPlayer = FindPlayerBySteamId(steamId);
-        }
-
-        if (!targetPlayer)
-        {
-            LogRule(NexoDM_Constants.RULE_OPEN_DIALOG_NO_TARGET, "target player not found");
-            return;
-        }
-
-        ScriptRPC rpc = new ScriptRPC();
-        Param1<int> payload = new Param1<int>(secondsLeft);
-        // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57.
-        rpc.Write(payload);
-        // GGDBG (REVERT) ----------------------------------------------------
-        string ggdbgSent = "server BOD sending OPEN_DIALOG recipient=";
-        ggdbgSent = ggdbgSent + recipient.GetPlainId();
-        ggdbgSent = ggdbgSent + " secs=";
-        ggdbgSent = ggdbgSent + secondsLeft.ToString();
-        NexoDM_Debug.Log(ggdbgSent);
-        // END GGDBG ---------------------------------------------------------
-        // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
-        rpc.Send(targetPlayer, NexoDM_RPC.OPEN_DIALOG, true, recipient);
-#endif
-    }
-
-    void BroadcastCloseDialog(PlayerIdentity recipient)
-    {
-#ifdef SERVER
-        if (!recipient)
-            return;
-
-        // R2: PlayerIdentity.GetPlayer() in scripts/3_game/gameplay.c:374-375.
-        PlayerBase targetPlayer = PlayerBase.Cast(recipient.GetPlayer());
-        if (!targetPlayer)
-        {
-            // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
-            string steamId = recipient.GetPlainId();
-            targetPlayer = FindPlayerBySteamId(steamId);
-        }
-
-        if (!targetPlayer)
-            return;
-
-        ScriptRPC rpc = new ScriptRPC();
-        // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
-        rpc.Send(targetPlayer, NexoDM_RPC.CLOSE_DIALOG, true, recipient);
-#endif
-    }
-
-    protected void CloseOrphanedDialogs()
-    {
-#ifdef SERVER
-        EnsureCollections();
-
-        int index = 0;
-        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
-        {
-            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
-            if (!entry)
-                continue;
-
-            if (entry.promptState != NexoDM_PromptState.PROMPT_PENDING)
-                continue;
-
-            PlayerBase player = FindPlayerBySteamId(entry.steamId);
-            if (!player)
-                continue;
-
-            PlayerIdentity identity = player.GetIdentity();
-            if (identity)
-                BroadcastCloseDialog(identity);
         }
 #endif
     }
@@ -1608,57 +995,8 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
-    protected void CleanupParticipantsToPublic()
-    {
-#ifdef SERVER
-        if (!EnsureConfig())
-            return;
-
-        EnsureCollections();
-
-        int index = 0;
-        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
-        {
-            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
-            if (!entry)
-                continue;
-
-            if (entry.role != NexoDM_Role.PARTICIPANT)
-                continue;
-
-            PlayerBase player = FindPlayerBySteamId(entry.steamId);
-            // Skip a dead participant (e.g. the just-killed victim on a victory kill): teleporting
-            // and wiping a corpse mid-death is pointless and risky. The role reset below still applies.
-            // R2: EntityAI.IsAlive() used on players in scripts/3_game/entities/entityai.c:788.
-            if (player && player.IsAlive())
-            {
-                vector spawn = PickRandomSpawn(NexoDM_Role.PUBLIC);
-                // R2: Object.SetPosition(vector) in scripts/3_game/entities/object.c:300.
-                player.SetPosition(spawn);
-                WipeInventory(player);
-                EquipPlayer(player, NexoDM_Role.PUBLIC, 0);
-                SetTierSync(player, 0);
-            }
-            else
-            {
-                // F-02: a dead/absent participant can't be cleaned now. Record their steamId so their
-                // next respawn/reconnect teleports + re-equips them as public (I4 for the dead subset).
-                // Stored outside m_PlayerEntries so it survives ResetStats (the entry does not).
-                if (m_PendingPublicCleanup)
-                    m_PendingPublicCleanup.Insert(entry.steamId);
-            }
-
-            entry.role = NexoDM_Role.PUBLIC;
-            ApplyRoleToOnlinePlayer(entry.steamId, NexoDM_Role.PUBLIC);
-        }
-
-        string cleanupDetail = "participants returned to public";
-        LogRule(NexoDM_Constants.RULE_ROUND_CLEANUP, cleanupDetail);
-#endif
-    }
-
     // G3-G5: answer a client's SCOREBOARD_REQ with the participant table (server-authoritative).
-    // Serialized as count + per-row [name, tier, tierMax, kills, assists, deaths]; the client
+    // Serialized as count + per-row [name, kills, assists, deaths]; the client
     // reads the same order in NexoDM_PlayerBase.NexoDM_HandleScoreboardDataRPC.
     void OnScoreboardRequest(PlayerIdentity sender)
     {
@@ -1684,7 +1022,7 @@ class NexoDM_RoundManager : Managed
         EnsureCollections();
 
         // G5/access gate: only serve the participant table during an active round, and only to a
-        // participant (blocks public/spectators and the empty-board-refresh-forever when idle).
+        // participant (blocks the empty-board-refresh-forever when idle).
         if (m_State != NexoDM_State.ACTIVE)
             return;
 
@@ -1692,16 +1030,7 @@ class NexoDM_RoundManager : Managed
         if (!senderEntry || senderEntry.role != NexoDM_Role.PARTICIPANT)
             return;
 
-        int tierMax = 0;
-        if (EnsureConfig())
-        {
-            // R2: NexoDM_Config.GetGunPresets() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:163.
-            array<string> guns = m_Config.GetGunPresets();
-            if (guns)
-                tierMax = guns.Count();
-        }
-
-        // Collect participants then rank them by the tiebreak (tier>kills>assists>deaths) so the
+        // Collect participants then rank them by the tiebreak (kills>assists>deaths) so the
         // scoreboard Rank column is meaningful. Selection sort, best first (count <= MaxPlayers).
         array<NexoDM_PlayerEntry> ranked = new array<NexoDM_PlayerEntry>;
         int index = 0;
@@ -1740,14 +1069,11 @@ class NexoDM_RoundManager : Managed
         {
             NexoDM_PlayerEntry entry = ranked.Get(a);
             string name = GetPlayerName(entry.steamId);
-            int rTier = entry.tier;
             int rKills = entry.kills;
             int rAssists = entry.assists;
             int rDeaths = entry.deaths;
 
             rpc.Write(name);
-            rpc.Write(rTier);
-            rpc.Write(tierMax);
             rpc.Write(rKills);
             rpc.Write(rAssists);
             rpc.Write(rDeaths);
@@ -1758,81 +1084,15 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
-    // === NEXODM DEBUG (REVERT BEFORE RELEASE) ============================================
-    // Solo-test sim: lets an admin PARTICIPANT drive HUD/victory/scoreboard without a 2nd player.
-    // Usage (after the admin joins a round): !ggsim tierup | tierdown | fillstats | win
-    // Remove this method AND its !ggsim handler in NexoDM_ChatHandler before release.
-    void DebugSim(PlayerIdentity sender, string action)
-    {
-#ifdef SERVER
-        if (!CanMutateState())
-            return;
-
-        if (!sender)
-            return;
-
-        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
-        string steamId = sender.GetPlainId();
-        PlayerBase player = FindPlayerBySteamId(steamId);
-        NexoDM_PlayerEntry entry = GetEntry(steamId);
-        if (!player || !entry)
-            return;
-
-        if (action == "tierup")
-        {
-            ChangeTier(player, 1);
-            return;
-        }
-
-        if (action == "tierdown")
-        {
-            ChangeTier(player, -1);
-            return;
-        }
-
-        if (action == "fillstats")
-        {
-            entry.kills = 7;
-            entry.assists = 3;
-            entry.deaths = 2;
-            return;
-        }
-
-        if (action == "win")
-        {
-            int maxIndex = GetMaxTierIndex();
-            if (maxIndex >= 0)
-            {
-                entry.tier = maxIndex;
-                SetTierSync(player, maxIndex);
-            }
-            string winReason = "victory";
-            EndRound(winReason, steamId);
-            return;
-        }
-#endif
-    }
-    // === END NEXODM DEBUG ================================================================
-
-    protected vector PickRandomSpawn(int role)
+    protected vector PickRandomSpawn()
     {
         array<vector> spawnList;
         float radius = 0.0;
 
-        if (role == NexoDM_Role.PARTICIPANT)
-        {
-            // R2: NexoDM_Config.GetRespawnCoords() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:218.
-            spawnList = m_Config.GetRespawnCoords();
-            // R2: NexoDM_Config.GetRespawnRadius() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:202.
-            radius = m_Config.GetRespawnRadius();
-        }
-        else
-        {
-            // R2: NexoDM_Config.GetPublicRespawnCoords() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:224.
-            spawnList = m_Config.GetPublicRespawnCoords();
-            // R2: NexoDM_Config.GetPublicRespawnRadius() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:210.
-            radius = m_Config.GetPublicRespawnRadius();
-        }
+        // R2: NexoDM_Config.GetRespawnCoords() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:218.
+        spawnList = m_Config.GetRespawnCoords();
+        // R2: NexoDM_Config.GetRespawnRadius() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:202.
+        radius = m_Config.GetRespawnRadius();
 
         DayZGame game = GetGame();
         if (!game)
@@ -2124,7 +1384,7 @@ class NexoDM_RoundManager : Managed
         return false;
     }
 
-    protected void EquipPlayer(PlayerBase player, int role, int tier)
+    protected void EquipPlayer(PlayerBase player, int role)
     {
         if (!player)
             return;
@@ -2159,15 +1419,12 @@ class NexoDM_RoundManager : Managed
         if (role != NexoDM_Role.PARTICIPANT)
             return;
 
-        int safeTier = tier;
-        if (safeTier < 0)
-            safeTier = 0;
-
+        // F3: Loadouts aleatorios
         // R2: NexoDM_Config.GetGunPresets() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:163.
         array<string> guns = m_Config.GetGunPresets();
-        if (guns && safeTier < guns.Count())
+        if (guns && guns.Count() > 0)
         {
-            string gunName = guns.Get(safeTier);
+            string gunName = guns.Get(0);
             if (!LB_PresetLoader.Get)
             {
                 LogRule("PRESET_LOADER_UNAVAILABLE_GUN", gunName);
@@ -2178,7 +1435,7 @@ class NexoDM_RoundManager : Managed
                 if (gunPreset)
                 {
                     gunPreset.SpawnPreset(player, player);
-                    // Chamber + load the freshly spawned tier weapon and bind it to the hotbar.
+                    // Chamber + load the freshly spawned weapon and bind it to the hotbar.
                     MakeWeaponReady(player);
                 }
                 else
@@ -2241,14 +1498,13 @@ class NexoDM_RoundManager : Managed
     }
 
     // GG-01v5 birth-equip resolution: decide whether a fresh character about to be created belongs to a
-    // participant in an ACTIVE round, and if so return the gungame spawn + tier so MissionServer can
+    // participant in an ACTIVE round, and if so return the gungame spawn so MissionServer can
     // create the character AT that spawn (no double-load lag) and equip it during creation. Pure read,
     // no state mutation; PickRandomSpawn's random pick is consumed once by the caller (OnPlayerRespawn
     // skips its own PickRandomSpawn for this player via the bornEquipped guard).
-    bool ResolveParticipantBirthSpawn(string steamId, out vector spawn, out int tier)
+    bool ResolveParticipantBirthSpawn(string steamId, out vector spawn)
     {
         spawn = vector.Zero;
-        tier = 0;
 #ifdef SERVER
         if (!CanMutateState())
             return false;
@@ -2269,8 +1525,7 @@ class NexoDM_RoundManager : Managed
         if (!EnsureConfig())
             return false;
 
-        spawn = PickRandomSpawn(NexoDM_Role.PARTICIPANT);
-        tier = entry.tier;
+        spawn = PickRandomSpawn();
         return true;
 #else
         return false;
@@ -2279,16 +1534,16 @@ class NexoDM_RoundManager : Managed
 
     // GG-01v5: equip a participant DURING character creation (called from MissionServer.StartingEquipSetup,
     // before the engine releases the character to the network), so observers receive it already dressed.
-    // Wipes the vanilla default loadout EquipCharacter just applied, then equips the tier preset. Marks
+    // Wipes the vanilla default loadout EquipCharacter just applied, then equips the gun preset. Marks
     // the steamId so the post-birth OnPlayerRespawn skips the (desyncing) teleport+wipe+equip path.
-    void EquipParticipantAtBirth(PlayerBase player, string steamId, int tier)
+    void EquipParticipantAtBirth(PlayerBase player, string steamId)
     {
 #ifdef SERVER
         if (!player)
             return;
 
         WipeInventory(player);
-        EquipPlayer(player, NexoDM_Role.PARTICIPANT, tier);
+        EquipPlayer(player, NexoDM_Role.PARTICIPANT);
 
         if (!m_GG_BirthEquipped)
             m_GG_BirthEquipped = new set<string>();
@@ -2351,8 +1606,7 @@ class NexoDM_RoundManager : Managed
             if (!entry)
                 continue;
 
-            // Only participants are ever frozen (BeginRound gates the freeze on PARTICIPANT);
-            // skip public and declined-admin entries so unfreeze never touches them.
+            // Only participants are ever frozen (BeginRound gates the freeze on PARTICIPANT).
             if (entry.role != NexoDM_Role.PARTICIPANT)
                 continue;
 
@@ -2374,120 +1628,6 @@ class NexoDM_RoundManager : Managed
                 player.SetAllowDamage(true);
             }
         }
-#endif
-    }
-
-    protected void SetTierSync(PlayerBase player, int tier)
-    {
-#ifdef SERVER
-        if (!player)
-            return;
-
-        int safeTier = tier;
-        if (safeTier < 0)
-            safeTier = 0;
-
-        int maxTier = 0;
-        if (m_Config)
-        {
-            // R2: NexoDM_Config.GetGunPresets() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:163.
-            array<string> guns = m_Config.GetGunPresets();
-            if (guns)
-                maxTier = guns.Count();
-        }
-
-        player.m_GG_Tier = safeTier;
-        player.m_GG_TierMax = maxTier;
-        // R2: EntityAI.SetSynchDirty() in scripts/3_game/entities/entityai.c:3069.
-        player.SetSynchDirty();
-
-        // H2: leaders depend on the global max tier, so any tier sync recomputes all of them.
-        // The known player ref is passed through: during the respawn window the fresh character
-        // can be missing from GetPlayers()/alias to the corpse, and a flag pushed to the wrong
-        // object left the local crown permanently hidden (in-game test 2026-06-11).
-        RecalculateLeaders(player);
-#endif
-    }
-
-    protected void RecalculateLeaders(PlayerBase knownPlayer = null)
-    {
-#ifdef SERVER
-        EnsureCollections();
-
-        // Resolve the by-steamId bypass for the caller-supplied player (see SetTierSync).
-        string knownId = string.Empty;
-        if (knownPlayer)
-        {
-            PlayerIdentity knownIdentity = knownPlayer.GetIdentity();
-            if (knownIdentity)
-                knownId = knownIdentity.GetPlainId();
-        }
-
-        int maxTier = -1;
-        int index = 0;
-        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
-        {
-            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
-            if (!entry)
-                continue;
-            if (entry.role != NexoDM_Role.PARTICIPANT)
-                continue;
-
-            // F-01: a disconnected participant must not set the leader tier (suppresses live
-            // crown). The known player counts as online even before GetPlayers() lists it.
-            bool entryOnline = false;
-            if (knownId != string.Empty && entry.steamId == knownId)
-                entryOnline = true;
-            else
-                entryOnline = IsEntryOnline(entry);
-
-            if (!entryOnline)
-                continue;
-            if (entry.tier > maxTier)
-                maxTier = entry.tier;
-        }
-
-        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
-        {
-            NexoDM_PlayerEntry leaderEntry = m_PlayerEntries.GetElement(index);
-            if (!leaderEntry)
-                continue;
-            if (leaderEntry.role != NexoDM_Role.PARTICIPANT)
-                continue;
-
-            PlayerBase player;
-            if (knownId != string.Empty && leaderEntry.steamId == knownId)
-                player = knownPlayer;
-            else
-                player = FindPlayerBySteamId(leaderEntry.steamId);
-
-            if (!player)
-                continue;
-
-            int leaderFlag = 0;
-            if (maxTier >= 0 && leaderEntry.tier == maxTier)
-                leaderFlag = 1;
-
-            // Only push when the flag actually changed (avoids redundant SetSynchDirty churn).
-            if (player.m_GG_IsLeader != leaderFlag)
-            {
-                player.m_GG_IsLeader = leaderFlag;
-                // R2: EntityAI.SetSynchDirty() in scripts/3_game/entities/entityai.c:3069.
-                player.SetSynchDirty();
-            }
-        }
-#endif
-    }
-
-    protected void StartVotingTimer()
-    {
-#ifdef SERVER
-        EnsureTimers();
-        StopTimer(m_VotingTimer);
-        float votingSeconds = 60.0;
-        string callbackName = "OnVotingClosed";
-        // R2: Timer.Run(float,Managed,string,Param,bool) in scripts/3_game/tools/tools.c:595.
-        m_VotingTimer.Run(votingSeconds, this, callbackName);
 #endif
     }
 
@@ -2640,10 +1780,7 @@ class NexoDM_RoundManager : Managed
 
     protected bool IsBetterByTiebreak(NexoDM_PlayerEntry candidate, NexoDM_PlayerEntry current)
     {
-        // Tiebreak (I2): higher tier, then more kills, then more assists, then fewer deaths.
-        if (candidate.tier != current.tier)
-            return candidate.tier > current.tier;
-
+        // Tiebreak: more kills, then more assists, then fewer deaths.
         if (candidate.kills != current.kills)
             return candidate.kills > current.kills;
 
@@ -2654,23 +1791,6 @@ class NexoDM_RoundManager : Managed
             return candidate.deaths < current.deaths;
 
         return false;
-    }
-
-    protected int GetMaxTierIndex()
-    {
-#ifdef SERVER
-        if (!EnsureConfig())
-            return -1;
-
-        // R2: NexoDM_Config.GetGunPresets() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:163.
-        array<string> guns = m_Config.GetGunPresets();
-        if (!guns)
-            return -1;
-
-        return guns.Count() - 1;
-#else
-        return -1;
-#endif
     }
 
     protected string GetPlayerName(string steamId)
@@ -2694,20 +1814,7 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
-    protected PlayerIdentity GetIdentityForSteamId(string steamId)
-    {
-#ifdef SERVER
-        PlayerBase player = FindPlayerBySteamId(steamId);
-        if (!player)
-            return null;
-
-        return player.GetIdentity();
-#else
-        return null;
-#endif
-    }
-
-    protected void PromptConnectedPlayers()
+    protected void EnrollConnectedParticipants()
     {
 #ifdef SERVER
         DayZGame game = GetGame();
@@ -2734,58 +1841,8 @@ class NexoDM_RoundManager : Managed
                 continue;
 
             NexoDM_PlayerEntry entry = GetOrCreateEntry(steamId);
-            entry.role = NexoDM_Role.NONE;
-            entry.promptState = NexoDM_PromptState.PROMPT_PENDING;
+            entry.role = NexoDM_Role.PARTICIPANT;
             ApplyRoleToPlayer(player, entry.role);
-
-            // GGDBG (REVERT) ----------------------------------------------------
-            string ggdbgPcp = "server PromptConnectedPlayers prompting steamId=";
-            ggdbgPcp = ggdbgPcp + steamId;
-            NexoDM_Debug.Log(ggdbgPcp);
-            // END GGDBG ---------------------------------------------------------
-
-            BroadcastOpenDialog(identity, GetVotingSecondsLeft());
-        }
-#endif
-    }
-
-    protected void EnsurePublicEntriesForConnectedPlayers()
-    {
-#ifdef SERVER
-        DayZGame game = GetGame();
-        if (!game)
-            return;
-
-        array<Man> players = new array<Man>();
-        // R2: DayZGame.GetPlayers(out array<Man>) in scripts/3_game/global/game.c:947.
-        game.GetPlayers(players);
-
-        int index = 0;
-        for (index = 0; index < players.Count(); index = index + 1)
-        {
-            PlayerBase player = PlayerBase.Cast(players.Get(index));
-            if (!player)
-                continue;
-
-            PlayerIdentity identity = player.GetIdentity();
-            if (!identity)
-                continue;
-
-            string steamId = identity.GetPlainId();
-            if (steamId == string.Empty)
-                continue;
-
-            if (IsAdminSteamId(steamId))
-                continue;
-
-            NexoDM_PlayerEntry entry = GetEntry(steamId);
-            if (!entry)
-            {
-                entry = GetOrCreateEntry(steamId);
-                entry.role = NexoDM_Role.PUBLIC;
-                entry.promptState = NexoDM_PromptState.NONE;
-                ApplyRoleToPlayer(player, entry.role);
-            }
         }
 #endif
     }
@@ -2827,22 +1884,6 @@ class NexoDM_RoundManager : Managed
             return true;
 #endif
         return false;
-    }
-
-    protected int GetVotingSecondsLeft()
-    {
-        int secondsLeft = 60;
-#ifdef SERVER
-        if (m_VotingTimer && m_VotingTimer.IsRunning())
-        {
-            // R2: Timer.GetRemaining() in scripts/3_game/tools/tools.c:318; Math.Ceil(float) in scripts/1_core/proto/enmath.c:441.
-            secondsLeft = Math.Ceil(m_VotingTimer.GetRemaining());
-        }
-
-        if (secondsLeft < 0)
-            secondsLeft = 0;
-#endif
-        return secondsLeft;
     }
 
     protected PlayerBase FindPlayerBySteamId(string steamId)
@@ -2964,16 +2005,12 @@ class NexoDM_RoundManager : Managed
             m_PlayerEntries = new map<string, ref NexoDM_PlayerEntry>;
         if (!m_WarnLog)
             m_WarnLog = new map<string, int>;
-        if (!m_PendingPublicCleanup)
-            m_PendingPublicCleanup = new set<string>();
     }
 
     protected void EnsureTimers()
     {
         if (!m_RoundTimer)
             m_RoundTimer = new Timer();
-        if (!m_VotingTimer)
-            m_VotingTimer = new Timer();
         if (!m_EndStateTimer)
             m_EndStateTimer = new Timer();
         if (!m_FreezeTimer)
