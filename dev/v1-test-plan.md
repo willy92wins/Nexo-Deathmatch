@@ -44,3 +44,14 @@ Hacen falta 2 clientes (A y B). La config tiene `RespawnDelay: 5`, `KillsToWin: 
 | 3.11 | Encadenar 5 rondas con `Autostart: true` | Se rearma tras cada ronda; el mapa nunca repite ni el actual ni el anterior | log de rotación por ronda |
 | 3.12 | Al empezar cada ronda | Nadie conserva armas de la ronda anterior; no quedan armas en el suelo del mapa anterior | captura del inventario y del suelo |
 | 3.13 | B entra durante los 10 s de congelación | Queda congelado e inmune hasta que acaba la congelación | captura |
+
+## F4 · Loadouts en cada spawn
+
+| # | Paso | Resultado esperado | Qué recoger |
+|---|---|---|---|
+| 4.1 | 20 respawns de B con 2 loadouts de 3 armas cada uno | Las 20 veces aparece con la ropa del preset y un arma en manos con bala en recámara; salen al menos 2 armas distintas | captura de 3 respawns, log `RESPAWN_EQUIPPED` |
+| 4.2 | Un loadout que trae su propia venda y su propio cuchillo | Hotbar 1 arma, 2 cuchillo, 3 venda, sin repetidos en el inventario | captura del inventario |
+| 4.3 | Matar a B y acercarse al cadáver a los 2 s | Ni armas, ni cargadores, ni munición, ni cajas de munición recogibles | captura |
+| 4.4 | Esperar junto al cadáver | Se borra a los max(10, RespawnDelay + 5) s, nunca antes de que acabe la cámara de B | log con hora de muerte y de borrado |
+| 4.5 | Escopeta (MP-133 o BK-43) en un loadout | La bala en recámara es letal, no `RubberSlug` | captura del arma |
+| 4.6 | B se desconecta inconsciente y su cuerpo muere | Su cadáver tampoco deja armas | captura |

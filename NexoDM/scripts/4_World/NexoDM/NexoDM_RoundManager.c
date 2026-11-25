@@ -1049,8 +1049,11 @@ class NexoDM_RoundManager : Managed
         if (!wpn)
             return;
 
-        // F4 r1 #2: this repo and the review do not cite a verified take-to-hands API, so a weapon
-        // found only by FindPlayerWeapon is chambered and hotbar-bound where it already sits.
+        // F4 r1 #2: a weapon found only by FindPlayerWeapon goes to the hands when they are empty, so the
+        // participant spawns holding it. R2: Man.ServerTakeEntityToHands(EntityAI) in
+        // scripts/3_game/entities/man.c:197.
+        if (!player.GetEntityInHands() && wpn.GetHierarchyRootPlayer() == player)
+            player.ServerTakeEntityToHands(wpn);
         int muzzle = wpn.GetCurrentMuzzle();
         // R2: Weapon.HasInternalMagazine/GetInternalMagazineCartridgeCount in
         // scripts/4_world/entities/core/inherited/weapon.c:106/111. Only fill an EMPTY internal mag:
