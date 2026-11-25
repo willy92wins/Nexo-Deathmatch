@@ -1,0 +1,23 @@
+{
+    "Admin": [
+        "CAMBIAR_STEAMID64"
+    ],
+    "ClothingPreset": "Preset1",
+    "GunPresets": [
+        "GunPreset1",
+        "GunPreset2",
+        "GunPreset3"
+    ],
+    "Knife": "HuntingKnife",
+    "KnifeOneHit": "true",
+    "RoundDuration": "1200",
+    "MaxPlayers": "15",
+    "RespawnCoordinates": [
+        "18939,3828,3993"
+    ],
+    "RespawnRadius": "10",
+    "PublicCoordinates": [
+        "18235,876,8567"
+    ],
+    "PublicRespawnRadius": "10"
+}

@@ -1,0 +1,13 @@
+﻿{
+  "Admin": ["7656XXXXXXXXXX"],
+  "ClothingPreset": "Preset1",
+  "GunPresets": ["LFGG_MISSING_PRESET_DO_NOT_CREATE"],
+  "Knife": "HuntingKnife",
+  "KnifeOneHit": "true",
+  "RoundDuration": "1200",
+  "MaxPlayers": "15",
+  "RespawnCoordinates": ["18939,3828,3993"],
+  "RespawnRadius": "10",
+  "PublicCoordinates": ["18235,876,8567"],
+  "PublicRespawnRadius": "10"
+}
