@@ -1211,8 +1211,9 @@ class NexoDM_RoundManager : Managed
         if (!m_Config)
             return false;
 
-        // R2: string.Trim() in scripts/1_core/proto/enstring.c:304. Same trim as ValidatePresetField.
-        string clothing = m_Config.GetClothingPreset().Trim();
+        // No Trim here: look up the exact string EquipPlayer will spawn, so a name that only resolves after
+        // trimming fails closed instead of passing validation and spawning players without the preset.
+        string clothing = m_Config.GetClothingPreset();
         array<string> loadouts = m_Config.GetLoadouts();
         bool resolved = true;
 
@@ -1241,7 +1242,7 @@ class NexoDM_RoundManager : Managed
             int nameIndex = 0;
             for (nameIndex = 0; nameIndex < loadouts.Count(); nameIndex = nameIndex + 1)
             {
-                string loadoutName = loadouts.Get(nameIndex).Trim();
+                string loadoutName = loadouts.Get(nameIndex);
                 LB_PresetBase loadoutPreset = LB_PresetLoader.Get.GetPreset(loadoutName);
                 if (!loadoutPreset)
                 {
