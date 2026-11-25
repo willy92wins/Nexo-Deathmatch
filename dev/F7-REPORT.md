@@ -8,11 +8,11 @@ vanilla con sus reglas (incluido su mínimo de ~2 s, no tocado).
 
 | Cambio | Ruta:línea |
 |---|---|
-| Constante `KO_WAKE_DELAY_MS = 1000` (sin clave de config) | [NexoDM_Constants.c](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/3_Game/NexoDM/NexoDM_Constants.c:49) |
-| Miembro `m_NexoDM_KoStartMs` + init a 0 | [NexoDM_PlayerBase.c](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:11), [:27](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:27) |
-| `override OnUnconsciousStart`: `super` primero, solo `#ifdef SERVER` + `IsServer()`, guarda la hora, log `[NexoDM][KO] unconscious start t=… ms`, `Remove` previo + `CallLater(NexoDM_KoWake, KO_WAKE_DELAY_MS, false)` | [NexoDM_PlayerBase.c:122](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:122) |
-| `NexoDM_KoWake`: sale sin hacer nada si no hay game, no es servidor, `!IsAlive()`, `IsSetForDeletion()` o `!IsUnconscious()`; si sigue inconsciente, `SetHealth("", "Shock", GetMaxHealth("", "Shock"))` y log `[NexoDM][KO] shock raised to max t=… ms start=… ms` con ambas horas | [NexoDM_PlayerBase.c:153](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:153), subida en [:182](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:182) |
-| Cancelación del `CallLater` pendiente en el `EEDelete` ya sobrescrito por el mod (bloque `#ifdef SERVER` antes de `super.EEDelete(parent)`) | [NexoDM_PlayerBase.c:95](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:95) |
+| Constante `KO_WAKE_DELAY_MS = 1000` (sin clave de config) | [NexoDM_Constants.c](../NexoDM/scripts/3_Game/NexoDM/NexoDM_Constants.c:49) |
+| Miembro `m_NexoDM_KoStartMs` + init a 0 | [NexoDM_PlayerBase.c](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:11), [:27](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:27) |
+| `override OnUnconsciousStart`: `super` primero, solo `#ifdef SERVER` + `IsServer()`, guarda la hora, log `[NexoDM][KO] unconscious start t=… ms`, `Remove` previo + `CallLater(NexoDM_KoWake, KO_WAKE_DELAY_MS, false)` | [NexoDM_PlayerBase.c:122](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:122) |
+| `NexoDM_KoWake`: sale sin hacer nada si no hay game, no es servidor, `!IsAlive()`, `IsSetForDeletion()` o `!IsUnconscious()`; si sigue inconsciente, `SetHealth("", "Shock", GetMaxHealth("", "Shock"))` y log `[NexoDM][KO] shock raised to max t=… ms start=… ms` con ambas horas | [NexoDM_PlayerBase.c:153](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:153), subida en [:182](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:182) |
+| Cancelación del `CallLater` pendiente en el `EEDelete` ya sobrescrito por el mod (bloque `#ifdef SERVER` antes de `super.EEDelete(parent)`) | [NexoDM_PlayerBase.c:95](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:95) |
 
 Comportamientos de borde: si el jugador muere inconsciente, el callback vence con `IsAlive()`
 en falso y no hace nada (muere con normalidad; `EEKilled` no se ha tocado); si se borra antes
@@ -69,34 +69,34 @@ Solo los dos hallazgos de la ronda 1; nada más (R25/R20):
 
 - **#1 (P1) — re-subida periódica con tope.** Nuevas constantes sin clave de config
   `KO_WAKE_REPEAT_MS = 500` y `KO_WAKE_MAX_MS = 10000` en
-  [NexoDM_Constants.c:53](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/3_Game/NexoDM/NexoDM_Constants.c:53)
-  y [NexoDM_Constants.c:54](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/3_Game/NexoDM/NexoDM_Constants.c:54).
+  [NexoDM_Constants.c:53](../NexoDM/scripts/3_Game/NexoDM/NexoDM_Constants.c:53)
+  y [NexoDM_Constants.c:54](../NexoDM/scripts/3_Game/NexoDM/NexoDM_Constants.c:54).
   Tras la primera subida a 1000 ms, `NexoDM_KoWake` se reprograma a sí mismo cada 500 ms
   (`CallLater(NexoDM_KoWake, KO_WAKE_REPEAT_MS, false)`) en
-  [NexoDM_PlayerBase.c:213](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:213),
+  [NexoDM_PlayerBase.c:213](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:213),
   así que un segundo impacto que baje el shock entre 1 s y el despertar vanilla (>2 s) vuelve
   a quedar corregido en ≤500 ms y no devuelve un KO completo. Tope duro desde el inicio de
   la inconsciencia (`m_NexoDM_KoStartMs`): si `elapsed >= KO_WAKE_MAX_MS` el callback sale
   antes de subir el shock, y solo se reprograma si `elapsed + 500 < 10000`, en
-  [NexoDM_PlayerBase.c:191](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:191)
-  y [NexoDM_PlayerBase.c:213](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:213)
+  [NexoDM_PlayerBase.c:191](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:191)
+  y [NexoDM_PlayerBase.c:213](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:213)
   (subidas nominales a 1000, 1500, …, 9500 ms; nunca bucle infinito). Cada tick vuelve a
   pasar todas las puertas antes de subir y de reprogramar, así que el bucle se para sin
   reprogramar cuando despierta (`!IsUnconscious()`), muere (`!IsAlive()`) o está marcado
   para borrado (`IsSetForDeletion()`); el borrado además sigue cancelando el pendiente en
   el `EEDelete` ya existente, sin cambios, en
-  [NexoDM_PlayerBase.c:95](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:95).
+  [NexoDM_PlayerBase.c:95](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:95).
   La subida sigue siendo `SetHealth("", "Shock", GetMaxHealth("", "Shock"))` en
-  [NexoDM_PlayerBase.c:201](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:201),
+  [NexoDM_PlayerBase.c:201](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:201),
   con el mismo log `[NexoDM][KO] shock raised to max …` por subida.
 - **#2 (P2) — desconexión respetada.** Puerta `IsPlayerDisconnected()` (cita vanilla
   `P:\scripts\4_world\entities\manbase\playerbase.c:2638`, puesto a `true` por
   `PlayerBase.OnDisconnect()` en `playerbase.c:7665`, leída en esta copia) en los dos
   únicos puntos de actuación: al arrancar la inconsciencia, antes de guardar la hora,
   loguear o programar nada, en
-  [NexoDM_PlayerBase.c:138](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:138),
+  [NexoDM_PlayerBase.c:138](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:138),
   y en cada tick de `NexoDM_KoWake`, antes de subir el shock y sin reprogramar, en
-  [NexoDM_PlayerBase.c:172](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:172).
+  [NexoDM_PlayerBase.c:172](../NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:172).
   Si un cuerpo se desconecta mientras está KO, el siguiente tick (≤500 ms) sale por esta
   puerta sin tocar el shock: se respeta la muerte vanilla por combat-log y no se le
   resucita el shock a un cuerpo desconectado.

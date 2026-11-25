@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HUD Nexo mezcla</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;500;600&display=swap">
+<style>
+/* Layout: barra fina de controles y el HUD en un lienzo 16:9. Dentro del lienzo, 1u = 1 px a 1920x1080
+   y todo cae dentro del marco vanilla del HUD (90 % de la pantalla: 96 px a los lados, 54 arriba y abajo). */
+:root{
+  color-scheme: dark;
+  /* Colores del juego (rutas en las notas de abajo) */
+  --hud: rgb(220 220 220);            /* blanco de los iconos de estado */
+  --hud-dim: rgb(255 255 255 / .78);  /* texto secundario vanilla (1 1 1 0.7843) */
+  --panel: rgb(0 0 0 / .55);          /* panel normal del inventario (alfa 140) */
+  --select: rgb(200 0 0);             /* panel seleccionado del inventario */
+  --warn: rgb(220 220 0);             /* estado en aviso */
+  --crit: rgb(220 0 0);               /* estado crítico */
+  --divider: rgb(255 255 255 / .29);  /* separador de los iconos de estado */
+  --track: rgb(0 0 0 / .5);           /* fondo de la barra de aguante */
+  --menu-on: rgb(0 0 0);              /* menú de escape: fondo del botón resaltado */
+  --menu-red: rgb(255 0 0);           /* menú de escape: texto del botón resaltado */
+  --scene: #3b423f;                   /* fondo plano de comparación */
+  /* Página */
+  --page: #121514;
+  --chrome: #1c201f;
+  --line: #2d3331;
+  --fg: #e4e7e5;
+  --muted: #959e9a;
+  --hud-font: "Fira Sans", "Segoe UI", system-ui, sans-serif; /* aproximación a Metron, la fuente del juego */
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--fg); font-family: var(--hud-font);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 40px;
+}
+.wrap { max-width: 1600px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.pagehead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.pagehead h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .02em; }
+.pagehead p { margin: 0; color: var(--muted); font-size: 13px; }
+.controls { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.btn {
+  font: 500 13px var(--hud-font); color: var(--fg); background: var(--chrome);
+  border: 1px solid var(--line); padding: 7px 12px; cursor: pointer;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
+}
+.btn kbd { font: 600 12px var(--hud-font); border: 1px solid currentColor; padding: 0 6px; margin-right: 7px; }
+.btn[aria-pressed="true"] { background: var(--menu-on); border-color: var(--menu-on); color: var(--menu-red); }
+.btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.seg { display: flex; }
+.seg .btn + .btn { border-left: 0; }
+
+.stage {
+  position: relative; margin: 0 auto; max-width: 100%;
+  width: min(100%, max(320px, calc((100dvh - 96px) * 16 / 9)));
+  aspect-ratio: 16 / 9; background: var(--scene); overflow: hidden; container-type: inline-size;
+}
+.stage:focus-visible { outline: 2px solid var(--muted); outline-offset: 3px; }
+
+/* ---------- HUD ---------- */
+.hud {
+  --u: calc(100cqw / 1920);
+  --tsh: calc(1 * var(--u)) calc(1 * var(--u)) 0 rgb(0 0 0 / .6);
+  position: absolute; inset: 0; font-family: var(--hud-font); color: var(--hud);
+  font-variant-numeric: tabular-nums; line-height: 1; user-select: none; -webkit-user-select: none;
+}
+.hud > * { position: absolute; }
+.lbl { font-size: calc(12 * var(--u)); font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--hud-dim); }
+
+/* arriba izquierda: puntuación */
+.score { left: calc(96 * var(--u)); top: calc(54 * var(--u)); display: flex; align-items: center; background: rgb(0 0 0 / .35); }
+.score .blk { display: flex; flex-direction: column; gap: calc(5 * var(--u)); padding: calc(8 * var(--u)) calc(14 * var(--u)) calc(9 * var(--u)); }
+.score .lbl { font-size: calc(10 * var(--u)); }
+.score .num { display: flex; align-items: center; gap: calc(6 * var(--u)); font-size: calc(21 * var(--u)); font-weight: 300; }
+.score svg { width: calc(13 * var(--u)); height: calc(13 * var(--u)); }
+.score .vdiv { height: calc(14 * var(--u)); }
+.vdiv { width: calc(3 * var(--u)); height: calc(19 * var(--u)); background: var(--divider); flex: none; }
+
+/* arriba centro: tiempo y objetivo de bajas (de Fable) */
+.clock { left: 50%; top: calc(54 * var(--u)); transform: translateX(-50%); width: calc(300 * var(--u));
+  display: flex; flex-direction: column; align-items: center; gap: calc(9 * var(--u)); }
+.clock .t { font-size: calc(34 * var(--u)); font-weight: 300; letter-spacing: .04em; text-shadow: var(--tsh); }
+.goal { position: relative; width: 100%; height: calc(5 * var(--u)); background: var(--track); }
+.goal .me { position: absolute; left: 0; top: 0; bottom: 0; width: 46.667%; background: var(--select); }
+.goal .lead { position: absolute; left: 53.333%; top: calc(-4 * var(--u)); width: calc(3 * var(--u)); height: calc(13 * var(--u));
+  margin-left: calc(-1.5 * var(--u)); background: var(--hud); }
+.clock .lbl { text-shadow: var(--tsh); white-space: nowrap; }
+
+/* bajo el reloj: aviso de baja y asistencia */
+.pops { left: 50%; top: calc(150 * var(--u)); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: calc(7 * var(--u)); }
+.pop { display: flex; align-items: baseline; gap: calc(9 * var(--u)); white-space: nowrap; text-shadow: var(--tsh); }
+.pop b { font-size: calc(20 * var(--u)); font-weight: 600; color: #fff; }
+.pop span { font-size: calc(13 * var(--u)); font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--hud-dim); }
+.pop.old { opacity: .55; }
+
+/* arriba derecha: killfeed con icono de arma */
+.feed { right: calc(96 * var(--u)); top: calc(54 * var(--u)); display: flex; flex-direction: column; align-items: flex-end;
+  gap: calc(10 * var(--u)); font-size: calc(18 * var(--u)); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; text-shadow: var(--tsh); }
+.feed > div { display: flex; align-items: center; gap: calc(10 * var(--u)); }
+.feed .you { color: #fff; font-weight: 600; }
+.feed .gun { width: calc(64 * var(--u)); height: calc(18 * var(--u)); color: var(--hud-dim); }
+.feed .old { opacity: .6; }
+
+/* centro: top 5, solo mientras se mantiene T */
+.board { left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(560 * var(--u)); background: var(--panel); z-index: 2; }
+.board .r { display: grid; grid-template-columns: calc(30 * var(--u)) minmax(0, 1fr) calc(78 * var(--u)) calc(78 * var(--u)) calc(100 * var(--u));
+  align-items: center; column-gap: calc(8 * var(--u)); padding: 0 calc(14 * var(--u)); }
+.board .h { height: calc(36 * var(--u)); }
+.board .h .lbl:first-child { grid-column: 1 / 3; }
+.board .row { height: calc(34 * var(--u)); font-size: calc(17 * var(--u)); font-weight: 300; }
+.board .n { color: var(--hud-dim); }
+.board .nm { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.board .c { text-align: right; }
+.board .p { font-weight: 400; }
+.board .me { background: var(--menu-on); color: var(--menu-red); }
+.board .me .n { color: var(--menu-red); }
+.board.final { width: calc(640 * var(--u)); z-index: 3; }
+.board .title { height: calc(52 * var(--u)); display: flex; justify-content: space-between; align-items: center; font-size: calc(22 * var(--u)); font-weight: 300; }
+
+/* abajo izquierda: arma (encima de postura y aguante vanilla) */
+.weapon { left: calc(96 * var(--u)); bottom: calc(100 * var(--u)); width: calc(360 * var(--u)); box-sizing: border-box;
+  background: var(--panel);
+  padding: calc(14 * var(--u)) calc(20 * var(--u)) calc(16 * var(--u)); display: flex; flex-direction: column; gap: calc(10 * var(--u)); }
+.weapon .top { display: flex; align-items: center; justify-content: space-between; gap: calc(16 * var(--u)); }
+.weapon .name { font-size: calc(22 * var(--u)); font-weight: 400; letter-spacing: .08em; }
+.weapon svg { width: calc(108 * var(--u)); height: calc(30 * var(--u)); flex: none; }
+.weapon .ammo { display: flex; align-items: baseline; gap: calc(8 * var(--u)); padding-top: calc(4 * var(--u)); }
+.weapon .mag { font-size: calc(48 * var(--u)); font-weight: 300; }
+.weapon .sep { font-size: calc(24 * var(--u)); color: var(--hud-dim); }
+.weapon .res { font-size: calc(26 * var(--u)); color: var(--hud-dim); }
+.weapon .lbl { margin-left: auto; }
+.meter { height: calc(5 * var(--u)); background: var(--track); }
+.meter i { display: block; height: 100%; background: var(--hud); }
+
+/* abajo centro: quickbar vanilla (10 casillas; el arma sale con su render 3D) */
+.quickbar { left: 50%; bottom: calc(54 * var(--u)); transform: translateX(-50%); display: flex; gap: calc(4 * var(--u)); }
+.qs { position: relative; width: calc(62 * var(--u)); height: calc(62 * var(--u)); background: rgb(0 0 0 / .35); display: grid; place-items: center; }
+.qs.on { background: rgb(0 0 0 / .6); }
+.qs b { position: absolute; left: calc(5 * var(--u)); top: calc(4 * var(--u)); font-size: calc(11 * var(--u)); font-weight: 400; color: var(--hud-dim); }
+.qs svg { width: calc(54 * var(--u)); height: calc(16 * var(--u)); color: var(--hud); }
+
+/* vanilla: iconos del juego, teñidos como hace el motor (blanco x color) */
+.ico, .arr { -webkit-mask: var(--img) center / 100% 100% no-repeat; mask: var(--img) center / 100% 100% no-repeat; }
+.stance { left: calc(96 * var(--u)); bottom: calc(54 * var(--u)); width: calc(32 * var(--u)); height: calc(32 * var(--u)); background: var(--hud); }
+.stamina { left: calc(136 * var(--u)); bottom: calc(67.5 * var(--u)); width: calc(180 * var(--u)); }
+
+.status { right: calc(96 * var(--u)); bottom: calc(54 * var(--u)); width: calc(290 * var(--u)); height: calc(81 * var(--u)); }
+.slot { --tint: var(--hud); position: absolute; bottom: 0; width: calc(35 * var(--u)); height: calc(81 * var(--u)); }
+.slot.warn { --tint: var(--warn); }
+.slot.crit { --tint: var(--crit); }
+.slot .ico { position: absolute; left: 0; top: calc(23 * var(--u)); width: calc(35 * var(--u)); height: calc(35 * var(--u)); background: var(--tint); }
+.s-health { right: 0; } .s-blood { right: calc(43 * var(--u)); } .s-temp { right: calc(96 * var(--u)); }
+.s-food { right: calc(139 * var(--u)); } .s-water { right: calc(182 * var(--u)); }
+.arr { position: absolute; left: calc(6.5 * var(--u)); width: calc(22 * var(--u)); background: var(--hud); }
+.arr.a1 { height: calc(7 * var(--u)); } .arr.a2 { height: calc(12 * var(--u)); }
+.arr.up { transform: scaleY(-1); }
+.arr.up.a1 { top: calc(15 * var(--u)); }
+.arr.dn.a1 { top: calc(59 * var(--u)); }
+.arr.dn.a2 { top: calc(59.5 * var(--u)); }
+.arr.dn.a2.below { top: calc(75 * var(--u)); }
+.arr.dn.a1.below { top: calc(77 * var(--u)); } /* bajo el %: la flecha baja un poco para dejarle sitio */
+.pct { position: absolute; left: 50%; top: calc(61 * var(--u)); transform: translateX(-50%);
+  font-size: calc(14 * var(--u)); font-weight: 500; white-space: nowrap; color: var(--tint); text-shadow: var(--tsh); }
+.ndiv { position: absolute; right: calc(86 * var(--u)); bottom: calc(30 * var(--u)); width: calc(3 * var(--u)); height: calc(19 * var(--u)); background: var(--divider); }
+.bdiv { position: absolute; right: calc(229 * var(--u)); bottom: calc(31 * var(--u)); width: calc(3 * var(--u)); height: calc(19 * var(--u)); background: var(--divider); }
+.badge { position: absolute; right: calc(252 * var(--u)); bottom: calc(22 * var(--u)); width: calc(35 * var(--u)); height: calc(35 * var(--u)); }
+.badge .ico { position: absolute; inset: 0; background: var(--hud); }
+.badge b { position: absolute; left: calc(-2 * var(--u)); top: calc(-2 * var(--u)); width: calc(17 * var(--u)); text-align: center;
+  font-size: calc(12 * var(--u)); font-weight: 300; color: var(--hud); }
+
+.i-water0 { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEwAAABMCAQAAABtnpmgAAACzUlEQVR42u1aTWgTQRT+djYGFRG0Noq0YEFBpcWTkmAVtDmI4sWjKMWjN2969lD0VLyKiooI/l2KYKEHD7ZU9OQPFDQEGpGql/ZSSqu7z0s6mSabODPJZF/qvj3s5uXNvi/vffPmZXc8Ak8RWIfALoE0juH2Awu5RkxvrNd+YIGWleXsSjUBrBKLOfyo+om7sLO5VKZaQoibuFWluYLRpFxY0joG8hNXYI2cU7PVrjXAqBM5FgOwrgbp8uIDdg4jWna37ZZxW2AX8QJpLcs07ltBI5vjCC1TRT7RwRqLA/RRsVimnKkPG1jdNKs4fURbIq0202PF6jvtdg9sXHF4vaHliGL50DWwY4qzJ4rep2GaoAm6TDsUrRq1QbfAKvH6oCTxFP2U+l90XEnoZ6mfcgmsX4nACam9QWtlhc7L7wYV/YA7YFcV0teDVZ24u1J3zR2wNzXxylO0lKirJmaT7oCtMmlJap5RPRmVNqFkn7Yn08qfKZ+LUjNQ1zYvr2bK5273S9KKvKr/p6M3wto5MOG6QRJ8WsNWd7DCTSO57iLmuX608l9yLEweEVhzjHhxTMRRYL1O5pjgCiyZlaZxEc14aU8qQ7Cq/GzXSsGVY8msVMXnCizQuIPgSv4waa07YRH3uRbYgCvH2FZ+j2vl97lGLOTf8+s0isR1EU+ej5nGIOTa83u8en7RTPfWnogFiGELzQVk0YMebEUKAiF8LGEeC/iKd9JmowWJyW42FrDPYNQM9puyzTSV38rnvchqj8lJWCV3HJuSV081oeVwT15Pu0vlGbxUPr3HOKZRQKGm5G5AL/owhDwOK9qTeO0KGDCGs5Fzbw5/sIDVN0jbI0a+wmmX2xsy9GXNy7+gfPxLimb7CGx2EWRozBjY83ZsbwCBsvSA9CSgO3TU3IM5x1QZwiH0Yw/6sA1pbCprF/Eb8yiihFlM4i0WbW79F6dh6YEZwu4OAAAAAElFTkSuQmCC"); }
+.i-food1 { --img: url("data:image/png;base64,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"); }
+.i-temp2 { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEwAAABMCAQAAABtnpmgAAADhElEQVR42u1aS0hUURj+jmaJlOIDqoVCjBIuKqFVSLQo0V4GYRS4CGpXiCsXbStoX4tACFNIqoVjD1oaumkj0sIQtUhqUfgi8cU4eL8W88/hzswdx5k7595bzH8X597//HPm43+ee/+jiGBSEQrACsAS6Cz68BNb2MIcBtCShxXp/qrnGJNplEfcreoe1nH+phMtstnNuspluqjBJA6mmVtCCCt++dgjDWsUV1GKUrRjTDjVeOiXj9VwQwz3zMZV7NUGrfDHx27L389Q2WApKs7KzK1c13ZnypMyPkmZGUiS8NjHDsv4NWVmLEni/8n8e1z9Wsm4CdqiyT6j/NEYg1or0+uFbtfPj8YYNI0VZdSl5Q+w7Ywu7pMpi3cN3WNgVlof466h++Rj8FdjBuI1PxpjFhnO01qp8l8TTJlS+WvKzK6u/K2VgStJhLH9hylgPqeLYhfe59PW2ueotIBgf+1hUIGpoJYkBi1dKHPGzU8eU0F9fYtRGAQxHIQ9PzMa1gpCVDJ475UMWkmy/r0EG6cDQXh9U/n8zOUO2EbGpMpCL8lGe9GYUaYiV2MWuYDVjxOOnzft1ITnuUHLHdhT3ND38ykrrunnTjz2sjNyR/c+5nlFeG9Ikm/l6RLntcxdrzoj1VyWv1xgo+aGE4CBDRraMmu86Yw8QCUAYBFnMGXzukSaRTMWAACVuO+FKcsYFU3c1Lw6DnNbuCOs1T2lblpylZs3Zdy/fmhOG/8kNFF/sUWAKX4TYJ3mTdkk4ysZ6/ASFQkShzCAKrnvk7HdfLpIBtaRBCsGrVvuPsp41LyPrYvBKuV5wrEnPiGzVfK8br4nHvtJBKXyvIr9DlJressTkXhVXhfx1Sy4RoEtAQD2SS4DPjtKxblVoq8l88AmZTwtY6+jVL+WijnNDBTU7s2ZC7B4WzlexIfxPkUmrGP2uoyfzEflOYkziyHhlPNdQkQOsUxmanXmPyUJ12gRnxMAgzZeC19znOMc4kUbNyyw5nQlMArsmtZN945yPSSjjDKa/cYnN2AltqR6b0dYMWBT3p1UOcZNDW3Q4UhWSHtdlFHti54coblsg0YOsoP1LGEJQ2znC70FIqNs9fZsj2IrI4wwHW3LdcHrQ0eKivX8siOwaTZ4fxoqHv5dnHEENs2ubNJD/k7c2VsMbTiPZjSgHMAKvmMEI/jg7iOBKpwczpL+AkiRtOZafin3AAAAAElFTkSuQmCC"); }
+.i-blood0 { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEwAAABMCAQAAABtnpmgAAAE7UlEQVR42u2aXWwUVRTHz26Fh4UQQNrwRGLdbSCttjU2khBo+dDSmCgYHsFoeMCo24ZEUp70UXljkxL5jFHfLA9oWoS2fjxY0JRWCmLYbWmiJGII1qaRQtbt/n3Yu/+dnRnauZ07uyT2TNI7+5+Zc389c8/M/ZgQ5PG0sCyCLYL9T8GeMOIlJCIi74pIl4iIGEj1EEyBRSUlIjUybgbM3K1MWP6aMJjYQogjb3GETPj0C5TbavGAYDOoo152sBFYbfhxAYvDbnH/YP6yMpeNNx0plJX1frMz7DtzPqWPARmg189y96N8WdnB23cHy7Ecd/j7nXJm5VpME2Q/BIL9/H0fK8sHdpIY/dT6qZ0oPVgu59qIMIVq6jFkqbctPDv9gCUJcOQRj49kOcASmFXV/+p44P6ijswiUWqwGGYJttkB1kywWcRKCSY4z9t1hlozmrl/hsd7Stn4d7Lafy0PhSEMcX8lMjyntVRgS5Fipe1U211/A8BNLC0N2GFWeYXaKqQBAGmsonaF53WWAiyKDLJqa6F6jhBfUmvheRlEgwc7SrBeS7O3WgG3l2BHgwaLIkOwfBSWYLgIbARhnp0H046ZLlgPwRLU3nJ0FN/msQTBeoIEe4FV32Ujr8KUA2wKVUyKu1SbggPrYyUHqB2Hmx3n8QPU+oICa7HES+aIV3HMxBKzlmDAvvEcr0fFrD8IsAa6v42IQ3OzZ/lSv60fM518zNsb1M7OCXaOYG9S6zUNZo1XXqvDfNakwJZZYva0WbATLvG6MC9YH3uwhZh9bBKskp3C+9Q2Y37LYifPn1FaBpVe6vQ24N3L8w5Te8/TlXHudaqyQvaaG/COMF5PKuUpwFPECm/U1YzZsKlbuZEVnaTW5Rks4TIK3WgG7Bj7VVv432fg1dKMcqFVHjMDNqawfmN3pgM61kFPvytlzETjf0aiaq9bsmrvda15m0Jj71ZlVOr8T0O96HBbL89pgT0vDWrvLLWX/IM1iUhIQvK3/KSUbdpzXVtV+aNMWrz6BGtU5VWXW+PV9vHZdNXm1QdYtSpHqdRrgxWuGLV59QG2xPa7UioWMKFaOY9XH3OwM6pcIekFzKg+sHkxMDk8pco1qry1AKy0/GPzMu0f7A9Vrqcyrg1WSJwNNq8+wFI2lyIXtcFGHWBJ/2DfqbKKudWtDfaJKhuYBN/6B7vmeFpflmEtrCG57HiLXDPRH3uoXr0TVLZrvcR38LoJpTw007s4zSp2WbpCXq2L1+ymdtoM2CY6TCGMMMIQRDDoCWsQEZfp902mBiM/sEfarsC8oQ2qoXFu9j+/MHHJ3Chph6WrXMPuYgSn5sQ6xRF7br0kD7bd5LjyC4KlUFM0Hhhwheovul0xJAnWbXbAuw6TrPQ6YkVLMRvwAQYwhjTu4R6+x/uoLVqQiOE6r53EOtNzF62WeCQVmpelnZil0WvM+etMQx0sGpbFPYHFLW0LOBjUjOJHFrAsktjFRHDbXlUtKw/2YZCTw522Rn4Lh9DoOKsRhzBmO7Mz6K8IXpHPZYVN+0vGZVwmpUJE6qVBltmOT8s++Sr4xfoafK31rjxf9IAJeFnwNYx6gvoZe0q/WN+mliOc8xgZteTw8pzJEeCXKmERaZVWqZVqWSsREZmRP2VCbsgFuejvSxX/YLlPZty+wCvjJzQBWmjxy2FN+w9Vb1tCxa7l2wAAAABJRU5ErkJggg=="); }
+.i-blood2 { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEwAAABMCAQAAABtnpmgAAAEqUlEQVR42u2aW2xURRjH/3uAGiBGSDXwYgxltyFU0vYBQtQErGCLJkYJj41GiREjbdKHBmriLb7IW5vgg0BjgomJ+qRStXS9ECWYCFgbJN1l6wMqKo1WtNSml/37sLP/nr20nLNnzi7Rzkk6szPf982vczvnm5kIcXMGB4tgi2D/U7ClVqxEAAD7ARwGAFiY6hHaAosiCaAWKTtg9rqyx/XXRqCNJ8I2ZkMbIzZsBgXKPHdzUmATrFN+xcG+pTucu1nA2pgf2oKDBZuVmdk4XDCF0tgQdHY6gWfOcdmIY0BW38r0R+Vm5XPqvp95O2/lFf3eX8lZeRuvC+QZguBe1+xcVTmwN4QxoLyTyjtSfrDMnGsRwhTXqKyG15S/q/TZGQRsWAAdOaWHlJ+oBFg3Z0z1FwvKL5qSWfaUGyzKGYFtKyjfLrBZxsoJBp5Qd/UWLe9V+UflHPy7VO3MPIvCKk5LpqVcYLe4hn37vFLtkkmyqjxgXary7IJyZyV3oBxgUc4wbZ6mBSWbJDfDaPhg3QLru6Fsn8C6wwbLLBOZ6qIepLNgvtvM/zKRBevxJN8jsBNhgm3RcB7lak8aqzkqnc3hgcVVyT7POvukczIssPtd7eVHb67NtocDNlBCe+W2WTwMsEaZ/8nnSl7FH6W7zT5Yn4w/6Xvte0q6fbbB3O1Vymtsrs1qvGl4dd+eVeqFkpyxl5TqtLkNdQd+Nf/CBFaW6CeOG8001mLUlsPbKrmDJTuwXaqx1Z7De96Mj+usLtkhq+a4sXLe1uDfasdT5BHZ2Xpj6aWeOjIbjpt4DfYCAJapi6lNlllENEQmAQC9uGq0nzbSj+NrG115SQuFY3KeN58z3kKXLF02OSkbXVmnCl5R3ogvsBHpvay8TcHXsQeV+szEm7DO13ysQYNJfVHEasnLxRYTj+GUST2BiHm8huwoPYUxk9ocHKzRxIPe/9t5W52y0hAcrKYALOobbE7jOxOvCw62LO/3+pLW/XytKnt7sP+Y+Bcs9421xLU6Wdsc/svE1SaewHQJLTaS9/vP4GBXTLxBOYO+sVJK1edZDQCWtADWry6tz7MaAOxTvR+zC8ebvsHe09KcHRCfBwcbUmqHic/gnC+sb3DGpHYWsRrgJT5Z8Op9gH7CTun9YHIm7XyPHVMVu5X3umesw9LZrbxjdsDuLbI9voKnPWGd5kqCDh06TCr3Plvu25fGYNoc+MEjWgYrA9auz6Sv7PmVTQJLu7bHV/DoglhHDRbosNb1/bbDpsP7jsASjOX4A/GiUAO8xyVVy6TA3rXrid/F31XpBcZyjmI28kXGeYlTnOJlfsBXuTHnaCfGC9Id45229y5aXO2RMGhejnZiTLg0m8PYhuqQ+bSZBl6uPbh9g46wdhQPucDSTPDRBaUfYyLHaXktzM3hA3mDPMVONhbZG+pkKk/yYNi3CB7B2wUbK39gCFfxG5YAqEdDQfk4WvF++If1MX7i6135MWvLdyy4h0OeoAa5p9yH9Q4f5oec5rTrAHDusDBz5PBQpW6qOACa0Yw6rMdaLAfwN67hewyjH/0A0pW62Oboyoy3/P/CHcXI4s1hn+FfLq7tAOFFQioAAAAASUVORK5CYII="); }
+.i-health1 { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEwAAABMCAQAAABtnpmgAAACN0lEQVR42u1aTVLCMBT+XsMeb6AuHUdwRlyL9+AOcBO5gK4crwG6ZhwYD+BwA0a3kueCkBaohSQmBkk6tEynzfv63vd+8lpixDkyJGAJWAK2dbTBjlv7wDRGsQILGotrVneN8LbzI32hgetQwJ5wZ3B11wZYimMHDkxaSiPf4SKzhMO+A6yZxjhc5CdLGZ40NrdklvTNMWGpMe+mlJaihGuubK89J+n9YjSd03mzlLkSDKHmHJYBG3iPmv3dHeyfRX7ynydCaMyq8iXedOsRHgFkmv7LI9RZ4AWvBjIutVtRwaUkCKxgd3BVkr70thz3jMDbg5atz+0V+UUMKKpr/rq2+oIT63Seg0CKOaz2VOBTkVmsuSUgFVdnZouR3L0nOPaopylOzEyZpZo/AQsGjGIFNo8VWBYouVOsHGNTYDI0nD31SooBdvaHLU2K1ZRs2urMKX8BUSha8n/Lp63jvWLuU1XWkC6IeAUW2/dgP500Mquqt2w4lsoeU1OeoatYIBRFec2TBpjs4L+kl283SgUSrErxVbWcl7rGxvJt++ipO44qr6qrq7oGMwdZvnGsHBOxAmMXGUXy3/4wPem2W98KWB6wexir2bjgHFRm9CKwoaf+TS52jGe/pmQj+CLWAMu+2+lBGna/0+okfwAzjyGUXQJtzQmQxHQlt5FqkC5+0uUdlBuwj6pGkluSynx7V4h2OsVfKHKsH4R00Ng5ns/RCAeshdbBftuTPtNyecmVmsMJmI/xDcS5eWE3iU1mAAAAAElFTkSuQmCC"); }
+.i-health3 { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEwAAABMCAQAAABtnpmgAAAB00lEQVR42u2aQU4CMRSG/1dccwXXmkgkYY9eg0uAFyGeADfGawhrQyTxBh6B/fS5sPOmMgh0Jq3Fee2GmWn7vun7W9q+IUaeyUDBFEzBjqYxuGUe59pj1DFXUkqwi0a13vCB3t4nFgYElt9AgQFG7inHAauafcFjQL2pgEE1ltuo5Fg4f+VK7pgrOX/xU0RFJuwxk6v47b9aj/l/SXcgcRjv6IhBuG2oserlh1Kfa/q1IADLfWCv0V05P32ApZj5E4o/zJVFOrAEPUZcN7fGs+sV9oYBgUW0K7wH2Bh6mxByiiMQCvTcYnIiKzbyaCSXacFInBdiW+6d1ULR5EChRwQKpmAKpmAKpmAKFh+McgVjdaWCRT7nv8JsZ7vG7qpU4AoblEflkPvfpUmU+oStt31j16ZxLbHX6vVepde2b8fT1NXoHyzVd6VmAS2f5/btjMHopNqmzbzoi/9+50iNRKblGcQ8yFS91IMMGga59q3YpN/AlogTNq0Mbk63YfKKh7QFM7meKBZ5xZKq1Gv4GtHDgjaoByhdTLyaoT5R/Hg5613ZVGD1/tniUuOVEcJW2c5jCT8ImeDmIFw5BCwMCgzSgY2afOKhm5GOgpF+B6tgkdMX7BhbY+5pRc0AAAAASUVORK5CYII="); }
+.i-arr1 { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAASCAQAAACK/fRXAAABCklEQVR42tXUsU7CUBSA4YOyAJaNdPcN+iYsOhU7VOeO8AhuJIQHkSchwYQBti7VILIo6+9wCS3tobdoOnjO0pze8+Xm9tw2kHriSmqGPVmJ/2dtIGvxDs+YnAGwwkd+lR0GrAF4MRVT9kgjIeTmQjTkPSN4KTzjNBJCWpXQVg497tm8nvJJPnZEVjZip/Q9p7DQJeJLxR2VdFT0m4jb7BmbdFV8wySHO0zYqKibrsrvxGVEouI9BKGnom8Ms6gGm6/8xLbQvGfMmH2h/sEj7aJyfoQCYmwRE2hoGWxGqQyPCcpG0j6pDywL6JLA1lflEjS55/WILrjj2t5V/eL2mTOnX3V949/9j38AeDEGqyGzbekAAAAASUVORK5CYII="); }
+.i-arr2 { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAcCAQAAACw95UnAAABvUlEQVR42tXWvUrDUBTA8auUYqNVqGh33yAOPodOKiY6tCCi2FE3cXSRFBx8C+3qSwSVChIQxKF+0A8VXf8OqU2ae9JEpYPnLOHe3B+39+QkHUENJ0bVkGFT3SpLGX/UbOUps3uNnzUAbrFQv8pxbDwAav6IP2wSRIMSEz9ESzyFBDOAa/RHgxJjqdBcBO3t2Z8+oUU0WuwmsrvCug5HAayYpMK7iOdFMi+iH1SYC5+xn0URf6IawfNUeRbRYnBXdCdF9mmI+CwKxQxV9HhkL4xKsEJhUOZFW/yJg8OnNt6kTE5X4spisM49SXHPhoSGYRNPa46xgbiOGth4zPfDZwB4WBgR3uZGQ2+wI2iu13nnYXihrznK2g9b5bI3f8WyNl/uK/hCAF9onafjS7i4LCWgABcBfCycYYdtpgf2XYFtXoWVx+EzNjigLeJy1bMi2ubwu0bJO3jGiRR0HEd78cA7OxTin+MCmzRFvNCdl1CPShiNa5ApEX/jlFPeRDRDJm3nKTZ5SNF5W2S6mRpWZLG4i0XvsMjGr056lWdZ41pD66wMQtPAfobxOitp1qT/ZC7i4rKY9v6Rf/dP6AsjYIenMJKuKAAAAABJRU5ErkJggg=="); }
+.i-stance { --img: url("data:image/png;base64,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"); }
+.i-bleed { --img: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFgAAABYCAQAAADbnPi/AAAFhklEQVR42u2bXWwUVRTHf7stLW2pEMSGkkjUtpEv0QSNUVFBg6kQ/IiBGB6MQX0goaZGYwxP+OQDQaqxSlI0JEaMPlGQBIQnaGKE8FlqW1ojxIgRAkIL+73792Gn09ndme22zHRnTc887My9d8789uacc8+9cycgSkuCTAFPAWdIecmQ1vESV+ksjR5+mn0co59OQP4+atWiU5L6VZcu8TPsg/pGadk3WupX2Ge1VwnjaLHW+A+1TBv1mxKSpIT61KSgf4HLtFE3NSIJ/aSggn4FnqH3MmATetvA9SHwbLUopJCJG1K3GhWwa1t82Dq1ZsBK0nYFFPAjcJ1aFVXUghpSSE8ZuD4DrtKHWbCStFO1wn/A0/SWblpcTJIiimjV2PcWA/eVLNS07NKcQu6efNgehW1wjxeqYTLTyyfp4AGm29RE+c4f+XCZ8RuggR00AwEAsieSlRwvWKfHQ236+FwppZQyDSCVdUg1her0HvjdDLBR4AtaqyNG+XDhOr0FXq0LWT0pSXGl1KpKVWpesYGtAX+BziguOzmq+4z2QR1QUkn1Ff4Mb+Z0C9hDL4tsXHqId3iGi+b1QQCujUO3Bz3cophiNj0b0VFVZLQPqklJJXWkeCbxoi7ISf7MwkVBBZVUUj8W/gx34nA6ujbSznNm7M2WGB8TyypLAcPMJFGMlZ82+vPgAnxtWzpUjKWqZvposYxsdrIL+4XSKBCezKWqBjpYMWarGKcdaoYM05iUHq7hfQZYQcA4rNJDj+WqgvMOOm4AMyYnrK3UQNaQK8nw+iVCqF23zfIqBy2/Svre+7A2Rx2WJMaK263FlpnFCHDYUVOPpE6vR7qVXGJDTmmc87zOQxZTiLN7TF2VwEy3nS5g2g800kazEQ8CJlh6mN3Araw7/yBMldnCTuYA9Q55sgtRYjNtjuHr5TwPjDjWzAQavQlrjezPo7rdtvRiwboH3Q5rm+nLwY1YBtVDee++5VD+iDn0uBrWmnQ6J/+Kqkfrtd68nm97Z7OSSkoacEiWWpRSSgklVKYyt8Lappx0Maoec9HjmlFCXuBeB+B+E3i1O8ANOpe1UBdTb8YKzd68wI0G8AkH4JQJ/FlhwPlteBPdGXYbp491LOSwpayL6+A48I5I0sHV7vA9nTXe3sVBnsiA/Z0tdOYkKueoBceM9rLRJcMOrhiwuH7yTsLacg5SkwH7AQdsW55n2jhnZaPyNzEqjPOBOwlrOzlmwT3Fqyx0wB0RJ+CQMcsYdqjvNs8GJxLWAgpovs7qluliJ/XYmI4gSW2OtekV4D0OtasUlZRS/8SSH/ECgyylnChR9rGEZZwo4F8nueJYN2TJNnLlMJ8Qppc1Exs4PjUCV0Tb1VBwyhdWQlscay9Lkra5NTMfdbqRqNDLF3w5LtdR3rlcyJvtB8s5RDX7aR8jJxhPlB0FTrkN/CZb2cbugnOrTKkC5uUFjruHXA6s5SL3T1hDLQCLxnC6v9wE3p813x2fzAJgsWN91G97fuqNDS735O1hl4HN3G0C8jhxIMJrDvVxIMVV//TwG0wDprODatv6K/4yiVk8ap4/TAnsW1tqGXSdgBN+Ag5Ycmj7WPsvKcq47h8bLi+trYxnLePdmVIAvsFJ4yycF3jQPybRSgJI8lHOG4xRk6ngXv9sFu1iJev42XEKNZcKh79SNJfpouv/tH84nWs0lQ7wbKCCJaUDXAfAwtIBrnEXOOD5ZxERKo1o8U8p9HC9gRtiq0saPd729ZW5hnRb1W5o9LqH12Wk+r43iXruNs+r3UnwvU0Om4x5YjpnXlZqX8pUlxpwyP/Al9zPib0GHjJnfTF+KQWT+IHRLR7flsLAMdd8Fdnhjkbvtzg/rxvu4WoSkp+pTyyngL2V/wCUCRZcnqmhhAAAAABJRU5ErkJggg=="); }
+
+/* ---------- notas ---------- */
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 28px; border-top: 1px solid var(--line); padding-top: 18px; margin-top: 6px; }
+.notes div { min-width: 0; }
+.notes h2 { margin: 0 0 5px; font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--fg); }
+.notes p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.notes code { font-size: 12.5px; color: var(--fg); overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="pagehead">
+    <h1>HUD Nexo · mezcla</h1>
+    <p>Versión 2 (vanilla) con el killfeed de la 1. Haz clic en el mock y mantén T para ver el Top 5.</p>
+    <div class="controls">
+      <button class="btn" id="t-btn" type="button" aria-pressed="false" aria-controls="board"><kbd>T</kbd>Top 5</button>
+      <button class="btn" id="end-btn" type="button" aria-pressed="false" aria-controls="final">Fin de partida</button>
+      <div class="seg" role="group" aria-label="Estado del jugador">
+        <button class="btn" id="st-sano" type="button" aria-pressed="true" data-state="sano">Sano</button>
+        <button class="btn" id="st-herido" type="button" aria-pressed="false" data-state="herido">Herido</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="stage" id="stage" tabindex="0" aria-label="Mock del HUD en partida">
+    <div class="hud">
+      <section class="score" aria-label="Tu KDA">
+        <div class="blk"><span class="lbl">Bajas</span>
+          <span class="num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>14</span></div>
+        <i class="vdiv"></i>
+        <div class="blk"><span class="lbl">Muertes</span><span class="num">6</span></div>
+        <i class="vdiv"></i>
+        <div class="blk"><span class="lbl">Asist.</span><span class="num">5</span></div>
+      </section>
+
+      <section class="clock" aria-label="Tiempo y objetivo">
+        <div class="t">07:42</div>
+        <div class="goal" title="Tú 14, líder 16, gana el primero en 30 bajas"><span class="me"></span><span class="lead"></span></div>
+        <div class="lbl">Puerto de Cherno · a 30 bajas</div>
+      </section>
+
+      <section class="feed" aria-label="Registro de bajas">
+        <div><span class="you">Tú</span><svg class="gun" viewBox="0 0 140 38" fill="currentColor" aria-label="M4-A1"><path d="M6 17h18l4-3h20v-4h6v4h26l3 2h18v-2h4v2h29v4h-29v2h-4v-2H84l-3 3H65l-3 12h-7l2-12H45l-3 8h-7l2-8H25l-4 6H6v-12z"/></svg><span>Kovacs_77</span></div>
+        <div class="old"><span>Vargash</span><svg class="gun" viewBox="0 0 140 38" fill="currentColor" aria-label="Mosin"><path d="M4 22l26-5h34v-3h72v4H66l-4 4H44l-12 5H6z"/><path d="M60 22h3v6h-3z"/></svg><span>Mirov</span></div>
+      </section>
+
+      <section class="board" id="board" aria-label="Top 5" hidden>
+        <div class="r h"><span class="lbl">Top 5</span><span class="lbl c">Bajas</span><span class="lbl c">Muertes</span><span class="lbl c">Asistencias</span></div>
+        <div class="r row"><span class="n">1</span><span class="nm">Vargash</span><span class="c">16</span><span class="c">4</span><span class="c">5</span></div>
+        <div class="r row me"><span class="n">2</span><span class="nm">Sokol</span><span class="c">14</span><span class="c">6</span><span class="c">5</span></div>
+        <div class="r row"><span class="n">3</span><span class="nm">Kovacs_77</span><span class="c">13</span><span class="c">9</span><span class="c">7</span></div>
+        <div class="r row"><span class="n">4</span><span class="nm">LaLoba</span><span class="c">11</span><span class="c">8</span><span class="c">4</span></div>
+        <div class="r row"><span class="n">5</span><span class="nm">Mirov</span><span class="c">9</span><span class="c">10</span><span class="c">6</span></div>
+      </section>
+
+
+
+      <section class="board final" id="final" aria-label="Clasificación final" hidden>
+        <div class="r title"><span>Fin de partida · gana Vargash</span><span class="lbl">Puerto de Cherno · 30 bajas</span></div>
+        <div class="r h"><span class="lbl">Clasificación global</span><span class="lbl c">Bajas</span><span class="lbl c">Muertes</span><span class="lbl c">Asistencias</span></div>
+        <div class="r row"><span class="n">1</span><span class="nm">Vargash</span><span class="c">30</span><span class="c">9</span><span class="c">8</span></div>
+        <div class="r row me"><span class="n">2</span><span class="nm">Sokol</span><span class="c">27</span><span class="c">11</span><span class="c">9</span></div>
+        <div class="r row"><span class="n">3</span><span class="nm">Kovacs_77</span><span class="c">24</span><span class="c">14</span><span class="c">11</span></div>
+        <div class="r row"><span class="n">4</span><span class="nm">LaLoba</span><span class="c">21</span><span class="c">13</span><span class="c">7</span></div>
+        <div class="r row"><span class="n">5</span><span class="nm">Mirov</span><span class="c">18</span><span class="c">17</span><span class="c">10</span></div>
+        <div class="r row"><span class="n">6</span><span class="nm">Draganov</span><span class="c">16</span><span class="c">15</span><span class="c">6</span></div>
+        <div class="r row"><span class="n">7</span><span class="nm">Pecas</span><span class="c">13</span><span class="c">16</span><span class="c">5</span></div>
+        <div class="r row"><span class="n">8</span><span class="nm">Zelenka</span><span class="c">11</span><span class="c">19</span><span class="c">8</span></div>
+        <div class="r row"><span class="n">9</span><span class="nm">Rubio_ESP</span><span class="c">9</span><span class="c">18</span><span class="c">4</span></div>
+        <div class="r row"><span class="n">10</span><span class="nm">NocheCerrada</span><span class="c">6</span><span class="c">21</span><span class="c">3</span></div>
+      </section>
+      <section class="quickbar" aria-label="Quickbar vanilla"><div class="qs on"><b>1</b><svg viewBox="0 0 140 38" fill="currentColor" aria-label="M4-A1"><path d="M6 17h18l4-3h20v-4h6v4h26l3 2h18v-2h4v2h29v4h-29v2h-4v-2H84l-3 3H65l-3 12h-7l2-12H45l-3 8h-7l2-8H25l-4 6H6v-12z"/></svg></div><div class="qs"><b>2</b><svg viewBox="0 0 140 38" fill="currentColor" aria-label="Pistola"><path d="M50 10h42v8H70l-2 4h-6l-4 14h-9l3-14h-2z"/></svg></div><div class="qs"><b>3</b></div><div class="qs"><b>4</b></div><div class="qs"><b>5</b></div><div class="qs"><b>6</b></div><div class="qs"><b>7</b></div><div class="qs"><b>8</b></div><div class="qs"><b>9</b></div><div class="qs"><b>0</b></div></section>
+
+      <i class="stance ico i-stance" aria-hidden="true"></i>
+      <div class="stamina meter" role="img" aria-label="Aguante al 72 por ciento"><i style="width:72%"></i></div>
+
+      <section class="status" aria-label="Estado del jugador">
+        <div class="slot s-blood" id="blood"><i class="ico i-blood0"></i><i class="arr dn a2 i-arr2" hidden></i></div>
+        <div class="slot s-health" id="health"><i class="ico i-health1"></i><i class="arr up a1 i-arr1"></i></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="notes" aria-label="Notas para implementarlo">
+    <div><h2>Recuadros del menú de escape</h2><p>Caja negra plana al 55 % sin bordes y texto fino (<code>day_z_ingamemenu.layout:99-111</code>). Lo resaltado va en negro con texto rojo, como el botón bajo el ratón (<code>ingamemenu.c:370-371</code>).</p></div>
+    <div><h2>Colores del juego</h2><p>Blanco de estado 220,220,220 (<code>ingamehud.c:276</code>), aviso 220,220,0 y crítico 220,0,0 (<code>:499</code>, <code>:503</code>). Paneles negro al 55 % y rojo de selección 200,0,0, los del inventario (<code>colormanager.c:6</code>, <code>:10</code>).</p></div>
+    <div><h2>Solo sangre y salud</h2><p>Los dos iconos vanilla de la derecha (<code>day_z_hud.layout:768</code> y <code>:938</code>), sin números. Agua, comida y temperatura se ocultan.</p></div>
+    <div><h2>Killfeed con iconos</h2><p>Arriba a la derecha, como en la versión 1, con el arma en icono en vez de nombre. En el juego el icono puede ser el mismo <code>ItemPreviewWidget</code> del arma o una silueta por clase; aquí son siluetas provisionales.</p></div>
+    <div><h2>Abajo a la izquierda, vanilla</h2><p>Solo la postura y la barra de aguante del juego (<code>day_z_hud.layout:3614</code> y <code>:3832</code>). El arma no lleva panel propio: se ve como en vanilla, en la quickbar de abajo al centro (<code>day_z_hud.layout:1888</code>, <code>inventoryquickbar.c:37</code>), con su render 3D. Las casillas de este mock son aproximadas.</p></div>
+    <div><h2>Tabla global al final</h2><p>Al acabar la partida sale la clasificación de todos los jugadores con el mismo aspecto que el panel de T: misma caja, columnas y resaltado de tu fila.</p></div>
+    <div><h2>KDA, sin puntos</h2><p>Arriba a la izquierda bajas, muertes y asistencias. Al matar ya no salen puntos. El Top 5 sale centrado solo mientras se mantiene T, con tu fila en negro y rojo.</p></div>
+    <div><h2>Fuente</h2><p>En el juego es Metron. Aquí va Fira Sans como aproximación, así que los anchos de texto no son exactos. Sin degradados, esquinas redondeadas ni desenfoques: nada que un .layout no pueda pintar.</p></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const board = document.getElementById('board');
+  const tBtn = document.getElementById('t-btn');
+  let keyHeld = false, btnHeld = false;
+  const sync = () => {
+    const show = keyHeld || btnHeld;
+    board.hidden = !show;
+    tBtn.setAttribute('aria-pressed', String(show));
+  };
+  const isT = e => (e.key === 't' || e.key === 'T') && !e.ctrlKey && !e.metaKey && !e.altKey;
+  addEventListener('keydown', e => { if (isT(e)) { keyHeld = true; sync(); } });
+  addEventListener('keyup', e => { if (e.key === 't' || e.key === 'T') { keyHeld = false; sync(); } });
+  addEventListener('blur', () => { keyHeld = false; btnHeld = false; sync(); });
+  tBtn.addEventListener('pointerdown', e => {
+    btnHeld = true; sync();
+    try { tBtn.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => tBtn.addEventListener(t, () => { btnHeld = false; sync(); }));
+  tBtn.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); btnHeld = true; sync(); } });
+  tBtn.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') { btnHeld = false; sync(); } });
+  tBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+  // Sano / Herido: mismos estados que pinta el juego (icono con menos relleno y su color)
+  const states = {
+    sano:   { health: ['', 'i-health1', '84%'], blood: ['', 'i-blood0', '100%'], hurt: false },
+    herido: { health: ['crit', 'i-health3', '23%'], blood: ['warn', 'i-blood2', '61%'], hurt: true }
+  };
+  const health = document.getElementById('health'), blood = document.getElementById('blood');
+  const setSlot = (slot, [tone, img, pct], base) => {
+    slot.className = 'slot ' + base + (tone ? ' ' + tone : '');
+    slot.querySelector('.ico').className = 'ico ' + img;
+  };
+  const apply = name => {
+    const s = states[name];
+    setSlot(health, s.health, 's-health');
+    setSlot(blood, s.blood, 's-blood');
+    health.querySelector('.arr').hidden = s.hurt;
+    blood.querySelector('.arr').hidden = !s.hurt;
+    document.querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === name)));
+  };
+  document.querySelectorAll('[data-state]').forEach(b => b.addEventListener('click', () => apply(b.dataset.state)));
+  const endBtn = document.getElementById('end-btn'), fin = document.getElementById('final');
+  endBtn.addEventListener('click', () => { const on = fin.hidden; fin.hidden = !on; endBtn.setAttribute('aria-pressed', String(on)); });
+})();
+</script>
+
+</body>
+</html>

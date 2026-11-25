@@ -66,7 +66,7 @@ modded class PlayerBase
             return;
         }
 
-        if (rpc_type == NexoDM_RPC.HUD_VITALS || rpc_type == NexoDM_RPC.HUD_ROUND || rpc_type == NexoDM_RPC.HUD_SELF || rpc_type == NexoDM_RPC.HUD_TOP5 || rpc_type == NexoDM_RPC.HUD_KILL || rpc_type == NexoDM_RPC.HUD_GLOBAL_TOP10)
+        if (rpc_type == NexoDM_RPC.HUD_VITALS || rpc_type == NexoDM_RPC.HUD_ROUND || rpc_type == NexoDM_RPC.HUD_SELF || rpc_type == NexoDM_RPC.HUD_TOP5 || rpc_type == NexoDM_RPC.HUD_KILL || rpc_type == NexoDM_RPC.HUD_GLOBAL_TOP10 || rpc_type == NexoDM_RPC.HUD_ROUND_RESULT)
         {
 #ifdef SERVER
             // Client must not drive HUD state. Drop the payload.
@@ -84,6 +84,8 @@ modded class PlayerBase
                 NexoDM_HandleHudKillRPC(ctx);
             if (rpc_type == NexoDM_RPC.HUD_GLOBAL_TOP10)
                 NexoDM_HandleHudGlobalTop10RPC(ctx);
+            if (rpc_type == NexoDM_RPC.HUD_ROUND_RESULT)
+                NexoDM_HandleHudRoundResultRPC(ctx);
             return;
 #endif
         }
@@ -624,22 +626,37 @@ modded class PlayerBase
     protected void NexoDM_HandleHudSelfRPC(ParamsReadContext ctx)
     {
 #ifndef SERVER
-        Param4<int, int, int, int> payload = new Param4<int, int, int, int>(0, 0, 0, 0);
-        if (!ctx.Read(payload))
+        int points;
+        int kills;
+        int deaths;
+        int assists;
+        int rank;
+        // R2: Serializer.Read(void) in scripts/1_core/proto/serializer.c:58.
+        if (!ctx.Read(points))
             return;
-        if (payload.param1 < 0)
+        if (!ctx.Read(kills))
             return;
-        if (payload.param2 < 0)
+        if (!ctx.Read(deaths))
             return;
-        if (payload.param3 < 0)
+        if (!ctx.Read(assists))
             return;
-        if (payload.param4 < 0)
+        if (!ctx.Read(rank))
+            return;
+        if (points < 0)
+            return;
+        if (kills < 0)
+            return;
+        if (deaths < 0)
+            return;
+        if (assists < 0)
+            return;
+        if (rank < 0)
             return;
 
         NexoDM_HudData data = NexoDM_HudData.Get();
         if (!data)
             return;
-        data.SetSelf(payload.param1, payload.param2, payload.param3, payload.param4);
+        data.SetSelf(points, kills, deaths, assists, rank);
 #endif
     }
 
@@ -660,6 +677,8 @@ modded class PlayerBase
             int points;
             int kills;
             int deaths;
+            int assists;
+            bool isReceiver;
             if (!ctx.Read(name))
                 return;
             if (name == string.Empty)
@@ -670,12 +689,27 @@ modded class PlayerBase
                 return;
             if (!ctx.Read(deaths))
                 return;
+            if (!ctx.Read(assists))
+                return;
+            // R2: Serializer.Read(void) in scripts/1_core/proto/serializer.c:58.
+            if (!ctx.Read(isReceiver))
+                return;
+            if (points < 0)
+                return;
+            if (kills < 0)
+                return;
+            if (deaths < 0)
+                return;
+            if (assists < 0)
+                return;
 
             NexoDM_HudTopRow row = new NexoDM_HudTopRow();
             row.name = name;
             row.points = points;
             row.kills = kills;
             row.deaths = deaths;
+            row.assists = assists;
+            row.isReceiver = isReceiver;
             rows.Insert(row);
         }
 
@@ -732,6 +766,73 @@ modded class PlayerBase
         if (!data)
             return;
         data.SetGlobal(rows);
+#endif
+    }
+
+    protected void NexoDM_HandleHudRoundResultRPC(ParamsReadContext ctx)
+    {
+#ifndef SERVER
+        string winnerName;
+        string mapName;
+        int killsToWin;
+        int count;
+        // R2: Serializer.Read(void) in scripts/1_core/proto/serializer.c:58.
+        if (!ctx.Read(winnerName))
+            return;
+        if (!ctx.Read(mapName))
+            return;
+        if (!ctx.Read(killsToWin))
+            return;
+        if (killsToWin < 0)
+            return;
+        if (!ctx.Read(count))
+            return;
+        if (count < 0 || count > 64)
+            return;
+
+        array<ref NexoDM_HudRoundResultRow> rows = new array<ref NexoDM_HudRoundResultRow>;
+        int index = 0;
+        for (index = 0; index < count; index = index + 1)
+        {
+            string name;
+            int kills;
+            int deaths;
+            int assists;
+            int isReceiver;
+            if (!ctx.Read(name))
+                return;
+            if (name == string.Empty)
+                return;
+            if (!ctx.Read(kills))
+                return;
+            if (!ctx.Read(deaths))
+                return;
+            if (!ctx.Read(assists))
+                return;
+            if (!ctx.Read(isReceiver))
+                return;
+            if (kills < 0)
+                return;
+            if (deaths < 0)
+                return;
+            if (assists < 0)
+                return;
+            if (isReceiver < 0)
+                return;
+
+            NexoDM_HudRoundResultRow row = new NexoDM_HudRoundResultRow();
+            row.name = name;
+            row.kills = kills;
+            row.deaths = deaths;
+            row.assists = assists;
+            row.isReceiver = isReceiver;
+            rows.Insert(row);
+        }
+
+        NexoDM_HudData data = NexoDM_HudData.Get();
+        if (!data)
+            return;
+        data.SetRoundResult(winnerName, mapName, killsToWin, rows);
 #endif
     }
 

@@ -4,6 +4,8 @@ class NexoDM_HudTopRow
     int points;
     int kills;
     int deaths;
+    int assists;
+    bool isReceiver;
 }
 
 class NexoDM_HudGlobalRow
@@ -19,6 +21,15 @@ class NexoDM_HudKillLine
     string killerName;
     string victimName;
     string weaponClass;
+}
+
+class NexoDM_HudRoundResultRow
+{
+    string name;
+    int kills;
+    int deaths;
+    int assists;
+    int isReceiver;
 }
 
 // Client store for the F5a HUD RPCs. No widgets.
@@ -42,12 +53,19 @@ class NexoDM_HudData
     protected int m_Points;
     protected int m_Kills;
     protected int m_Deaths;
+    protected int m_Assists;
     protected int m_Rank;
 
     protected ref array<ref NexoDM_HudTopRow> m_Top;
     protected ref array<ref NexoDM_HudGlobalRow> m_Global;
     protected int m_GlobalSerial;
     protected ref array<ref NexoDM_HudKillLine> m_KillsFeed;
+
+    protected string m_RoundResultWinner;
+    protected string m_RoundResultMap;
+    protected int m_RoundResultKillsToWin;
+    protected ref array<ref NexoDM_HudRoundResultRow> m_RoundResult;
+    protected int m_RoundResultSerial;
 
     void NexoDM_HudData()
     {
@@ -65,11 +83,17 @@ class NexoDM_HudData
         m_Points = 0;
         m_Kills = 0;
         m_Deaths = 0;
+        m_Assists = 0;
         m_Rank = 0;
         m_Top = new array<ref NexoDM_HudTopRow>;
         m_Global = new array<ref NexoDM_HudGlobalRow>;
         m_GlobalSerial = 0;
         m_KillsFeed = new array<ref NexoDM_HudKillLine>;
+        m_RoundResultWinner = string.Empty;
+        m_RoundResultMap = string.Empty;
+        m_RoundResultKillsToWin = 0;
+        m_RoundResult = new array<ref NexoDM_HudRoundResultRow>;
+        m_RoundResultSerial = 0;
     }
 
     static NexoDM_HudData Get()
@@ -133,6 +157,7 @@ class NexoDM_HudData
         m_Points = 0;
         m_Kills = 0;
         m_Deaths = 0;
+        m_Assists = 0;
         m_Rank = 0;
         if (m_Top)
             m_Top.Clear();
@@ -141,6 +166,12 @@ class NexoDM_HudData
         m_GlobalSerial = 0;
         if (m_KillsFeed)
             m_KillsFeed.Clear();
+        m_RoundResultWinner = string.Empty;
+        m_RoundResultMap = string.Empty;
+        m_RoundResultKillsToWin = 0;
+        if (m_RoundResult)
+            m_RoundResult.Clear();
+        m_RoundResultSerial = 0;
     }
 
     // Body removal after the round must not drop the global top before its 10 s.
@@ -154,6 +185,17 @@ class NexoDM_HudData
             for (index = 0; index < m_Global.Count(); index = index + 1)
                 keptRows.Insert(m_Global.Get(index));
         }
+        int keptResultSerial = m_RoundResultSerial;
+        string keptWinner = m_RoundResultWinner;
+        string keptMap = m_RoundResultMap;
+        int keptKillsToWin = m_RoundResultKillsToWin;
+        array<ref NexoDM_HudRoundResultRow> keptResult = new array<ref NexoDM_HudRoundResultRow>;
+        if (m_RoundResult)
+        {
+            int resultIndex = 0;
+            for (resultIndex = 0; resultIndex < m_RoundResult.Count(); resultIndex = resultIndex + 1)
+                keptResult.Insert(m_RoundResult.Get(resultIndex));
+        }
         Reset();
         m_GlobalSerial = keptSerial;
         if (!m_Global)
@@ -161,6 +203,15 @@ class NexoDM_HudData
         int put = 0;
         for (put = 0; put < keptRows.Count(); put = put + 1)
             m_Global.Insert(keptRows.Get(put));
+        m_RoundResultSerial = keptResultSerial;
+        m_RoundResultWinner = keptWinner;
+        m_RoundResultMap = keptMap;
+        m_RoundResultKillsToWin = keptKillsToWin;
+        if (!m_RoundResult)
+            m_RoundResult = new array<ref NexoDM_HudRoundResultRow>;
+        int putResult = 0;
+        for (putResult = 0; putResult < keptResult.Count(); putResult = putResult + 1)
+            m_RoundResult.Insert(keptResult.Get(putResult));
     }
 
     protected void ClearMatchStats()
@@ -174,6 +225,7 @@ class NexoDM_HudData
         m_Points = 0;
         m_Kills = 0;
         m_Deaths = 0;
+        m_Assists = 0;
         m_Rank = 0;
         if (m_Top)
             m_Top.Clear();
@@ -245,12 +297,13 @@ class NexoDM_HudData
         return left;
     }
 
-    void SetSelf(int points, int kills, int deaths, int rank)
+    void SetSelf(int points, int kills, int deaths, int assists, int rank)
     {
         m_HasSelf = true;
         m_Points = points;
         m_Kills = kills;
         m_Deaths = deaths;
+        m_Assists = assists;
         m_Rank = rank;
     }
 
@@ -272,6 +325,11 @@ class NexoDM_HudData
     int GetDeaths()
     {
         return m_Deaths;
+    }
+
+    int GetAssists()
+    {
+        return m_Assists;
     }
 
     int GetRank()
@@ -326,6 +384,22 @@ class NexoDM_HudData
         if (!row)
             return 0;
         return row.deaths;
+    }
+
+    int GetTopAssists(int index)
+    {
+        NexoDM_HudTopRow row = TopRow(index);
+        if (!row)
+            return 0;
+        return row.assists;
+    }
+
+    bool GetTopIsReceiver(int index)
+    {
+        NexoDM_HudTopRow row = TopRow(index);
+        if (!row)
+            return false;
+        return row.isReceiver;
     }
 
     void SetGlobal(array<ref NexoDM_HudGlobalRow> rows)
@@ -384,6 +458,90 @@ class NexoDM_HudData
         return row.isReceiver;
     }
 
+    void SetRoundResult(string winnerName, string mapName, int killsToWin, array<ref NexoDM_HudRoundResultRow> rows)
+    {
+        m_RoundResultWinner = winnerName;
+        m_RoundResultMap = mapName;
+        m_RoundResultKillsToWin = killsToWin;
+        if (!m_RoundResult)
+            m_RoundResult = new array<ref NexoDM_HudRoundResultRow>;
+        m_RoundResult.Clear();
+        if (rows)
+        {
+            int index = 0;
+            for (index = 0; index < rows.Count(); index = index + 1)
+                m_RoundResult.Insert(rows.Get(index));
+        }
+        m_RoundResultSerial = m_RoundResultSerial + 1;
+    }
+
+    int GetRoundResultSerial()
+    {
+        return m_RoundResultSerial;
+    }
+
+    string GetRoundResultWinner()
+    {
+        return m_RoundResultWinner;
+    }
+
+    string GetRoundResultMap()
+    {
+        return m_RoundResultMap;
+    }
+
+    int GetRoundResultKillsToWin()
+    {
+        return m_RoundResultKillsToWin;
+    }
+
+    int GetRoundResultCount()
+    {
+        if (!m_RoundResult)
+            return 0;
+        return m_RoundResult.Count();
+    }
+
+    string GetRoundResultName(int index)
+    {
+        NexoDM_HudRoundResultRow row = RoundResultRow(index);
+        if (!row)
+            return string.Empty;
+        return row.name;
+    }
+
+    int GetRoundResultKills(int index)
+    {
+        NexoDM_HudRoundResultRow row = RoundResultRow(index);
+        if (!row)
+            return 0;
+        return row.kills;
+    }
+
+    int GetRoundResultDeaths(int index)
+    {
+        NexoDM_HudRoundResultRow row = RoundResultRow(index);
+        if (!row)
+            return 0;
+        return row.deaths;
+    }
+
+    int GetRoundResultAssists(int index)
+    {
+        NexoDM_HudRoundResultRow row = RoundResultRow(index);
+        if (!row)
+            return 0;
+        return row.assists;
+    }
+
+    int GetRoundResultIsReceiver(int index)
+    {
+        NexoDM_HudRoundResultRow row = RoundResultRow(index);
+        if (!row)
+            return 0;
+        return row.isReceiver;
+    }
+
     void AddKill(string killerName, string victimName, string weaponClass)
     {
         NexoDM_HudKillLine line = new NexoDM_HudKillLine();
@@ -422,6 +580,15 @@ class NexoDM_HudData
         if (!line)
             return string.Empty;
         return line.weaponClass;
+    }
+
+    protected NexoDM_HudRoundResultRow RoundResultRow(int index)
+    {
+        if (!m_RoundResult)
+            return null;
+        if (index < 0 || index >= m_RoundResult.Count())
+            return null;
+        return m_RoundResult.Get(index);
     }
 
     protected NexoDM_HudGlobalRow GlobalRow(int index)

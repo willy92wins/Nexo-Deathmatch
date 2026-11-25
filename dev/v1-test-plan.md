@@ -1,7 +1,7 @@
 # NexoDM v1.0: prueba única en PruebasLF
 
 Checklist de lo que solo se puede comprobar en el juego. La prueba se hace una vez, con la v1.0 completa y el paquete
-firmado de la última fase (`C:\Users\guill\Repos\nexo-deploy\<fase>\@NexoDM`, clave `Return0`).
+firmado de la última fase (`<repos>\nexo-deploy\<fase>\@NexoDM`, clave `Return0`).
 
 Preparación:
 - Servidor con `@CF`, `@LBmaster_Core`, `@LBmaster_Groups` y `@NexoDM`; `keys\Return0.bikey` en la carpeta `keys` del servidor.
@@ -95,3 +95,19 @@ Decisión de Guillermo del 25-nov a las 21:57: opción (a). El KO dura unos 2 s,
 | 7.3 | Matar a B mientras está KO | Muere con normalidad; la cámara del asesino y el respawn funcionan | captura y log |
 | 7.4 | B se desconecta estando KO | No se despierta; se aplica la muerte vanilla por combat-log | log del servidor |
 | 7.5 | Revisar el log del servidor | Sin errores de script | `script_*.log` |
+
+## F8 · HUD final (sustituye a F5)
+
+Referencia: `dev/mocks/hud-nexo-mezcla.html` (v4).
+
+| # | Paso | Resultado esperado | Qué recoger |
+|---|---|---|---|
+| 8.1 | Entrar en una ronda | Arriba a la izquierda, el KDA (bajas, muertes, asistencias) sin puntos | captura 1080p y 1440p |
+| 8.2 | Matar a alguien | Al matar no sale +100 ni +50; el KDA sube; en el killfeed (arriba a la derecha) se ve el icono del arma del asesino | captura |
+| 8.3 | Matar con un arma que el cliente no tiene cerca (asesino lejos) | El icono sale igual (entidad local) o, si no, la silueta de respaldo, sin errores | captura y log del cliente |
+| 8.4 | Abajo a la izquierda | Solo la postura y la barra de aguante vanilla; el arma se ve en la quickbar vanilla abajo al centro | captura |
+| 8.5 | Abajo a la derecha | Solo los iconos vanilla de sangre y salud, sin números; ni agua, ni comida, ni temperatura | captura sano y herido |
+| 8.6 | Mantener T | Top 5 centrado con Bajas, Muertes y Asistencias; tu fila resaltada solo si estás en el top 5; al soltar desaparece | captura |
+| 8.7 | Acabar una ronda | 10 s de clasificación de la ronda («Fin de partida · gana X», mapa, objetivo) y después 10 s del top 10 global, con el mismo aspecto | capturas |
+| 8.8 | Ronda con muchos jugadores | Comprobar cuántas filas caben a 1080p (ver `dev/F8B-REPORT.md`) | captura |
+| 8.9 | Salir al menú y volver a entrar | Sin restos del HUD ni de los iconos del killfeed; sin errores | log del cliente |

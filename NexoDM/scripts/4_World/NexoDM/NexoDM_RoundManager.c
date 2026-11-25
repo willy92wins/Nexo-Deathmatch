@@ -69,6 +69,7 @@ class NexoDM_RoundManager : Managed
     protected ref array<int> m_HudTop5Points;
     protected ref array<int> m_HudTop5Kills;
     protected ref array<int> m_HudTop5Deaths;
+    protected ref array<int> m_HudTop5Assists;
 
     void NexoDM_RoundManager()
     {
@@ -93,6 +94,7 @@ class NexoDM_RoundManager : Managed
         m_HudTop5Points = new array<int>;
         m_HudTop5Kills = new array<int>;
         m_HudTop5Deaths = new array<int>;
+        m_HudTop5Assists = new array<int>;
 #endif
     }
 
@@ -218,6 +220,14 @@ class NexoDM_RoundManager : Managed
 
         // Capture state before flipping to ENDED: only a round that reached ACTIVE announces a winner.
         bool wasActive = (m_State == NexoDM_State.ACTIVE);
+        // Map index rotates below; the result screen names the map that just finished.
+        string finishedMapName = string.Empty;
+        if (wasActive)
+        {
+            NexoDM_ParsedMap finishedMap = GetActiveMap();
+            if (finishedMap)
+                finishedMapName = finishedMap.Name;
+        }
 
         StopTimer(m_RoundTimer);
         StopTimer(m_EndStateTimer);
@@ -255,6 +265,7 @@ class NexoDM_RoundManager : Managed
             BroadcastHudRound();
             // Fichas still exist. Below MinPlayersToScore the file is left untouched.
             ApplyRoundToLeaderboard();
+            BroadcastRoundResult(finishedMapName, winnerSteamId, reason);
             BroadcastGlobalTop10();
         }
 
@@ -2626,9 +2637,13 @@ class NexoDM_RoundManager : Managed
             }
         }
 
-        Param4<int, int, int, int> payload = new Param4<int, int, int, int>(entry.points, entry.kills, entry.deaths, rank);
         ScriptRPC rpc = new ScriptRPC();
-        rpc.Write(payload);
+        // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57.
+        rpc.Write(entry.points);
+        rpc.Write(entry.kills);
+        rpc.Write(entry.deaths);
+        rpc.Write(entry.assists);
+        rpc.Write(rank);
         rpc.Send(player, NexoDM_RPC.HUD_SELF, true, identity);
 #endif
     }
@@ -2861,17 +2876,28 @@ class NexoDM_RoundManager : Managed
             int points = 0;
             int kills = 0;
             int deaths = 0;
+            int assists = 0;
+            bool isReceiver = false;
             if (entry)
             {
-                name = GetPlayerName(entry.steamId);
+                name = HudDisplayName(entry);
                 points = entry.points;
                 kills = entry.kills;
                 deaths = entry.deaths;
+                assists = entry.assists;
+                // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+                if (entry.steamId == identity.GetPlainId())
+                    isReceiver = true;
             }
+            if (name == string.Empty)
+                name = "?";
             rpc.Write(name);
             rpc.Write(points);
             rpc.Write(kills);
             rpc.Write(deaths);
+            rpc.Write(assists);
+            // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57.
+            rpc.Write(isReceiver);
         }
         rpc.Send(player, NexoDM_RPC.HUD_TOP5, true, identity);
 #endif
@@ -2897,6 +2923,8 @@ class NexoDM_RoundManager : Managed
                 return false;
             if (m_HudTop5Deaths.Get(index) != entry.deaths)
                 return false;
+            if (m_HudTop5Assists.Get(index) != entry.assists)
+                return false;
         }
         return true;
     }
@@ -2908,6 +2936,7 @@ class NexoDM_RoundManager : Managed
         m_HudTop5Points.Clear();
         m_HudTop5Kills.Clear();
         m_HudTop5Deaths.Clear();
+        m_HudTop5Assists.Clear();
         int index = 0;
         for (index = 0; index < rowCount; index = index + 1)
         {
@@ -2916,17 +2945,20 @@ class NexoDM_RoundManager : Managed
             int points = 0;
             int kills = 0;
             int deaths = 0;
+            int assists = 0;
             if (entry)
             {
                 steamId = entry.steamId;
                 points = entry.points;
                 kills = entry.kills;
                 deaths = entry.deaths;
+                assists = entry.assists;
             }
             m_HudTop5Ids.Insert(steamId);
             m_HudTop5Points.Insert(points);
             m_HudTop5Kills.Insert(kills);
             m_HudTop5Deaths.Insert(deaths);
+            m_HudTop5Assists.Insert(assists);
         }
     }
 
@@ -2983,6 +3015,92 @@ class NexoDM_RoundManager : Managed
 #endif
     }
 
+    protected void BroadcastRoundResult(string mapName, string winnerSteamId, string reason)
+    {
+#ifdef SERVER
+        string winnerName = string.Empty;
+        string adminStop = "admin_stop";
+        if (reason != adminStop && winnerSteamId != string.Empty)
+        {
+            winnerName = GetPlayerName(winnerSteamId);
+            if (winnerName == string.Empty)
+            {
+                NexoDM_PlayerEntry winnerEntry = GetEntry(winnerSteamId);
+                if (winnerEntry)
+                    winnerName = winnerEntry.playerName;
+            }
+        }
+
+        array<NexoDM_PlayerEntry> ranked = CollectRoundFichas();
+        int rowCount = 0;
+        if (ranked)
+            rowCount = ranked.Count();
+        if (rowCount > 64)
+            rowCount = 64;
+
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            SendRoundResultTo(FindPlayerBySteamId(entry.steamId), mapName, winnerName, ranked, rowCount);
+        }
+#endif
+    }
+
+    protected void SendRoundResultTo(PlayerBase player, string mapName, string winnerName, array<NexoDM_PlayerEntry> ranked, int rowCount)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+        PlayerIdentity identity = player.GetIdentity();
+        if (!identity)
+            return;
+
+        // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
+        string receiverId = identity.GetPlainId();
+        ScriptRPC rpc = new ScriptRPC();
+        // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57.
+        rpc.Write(winnerName);
+        rpc.Write(mapName);
+        rpc.Write(HudKillsToWin());
+        rpc.Write(rowCount);
+        int index = 0;
+        for (index = 0; index < rowCount; index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = null;
+            if (ranked)
+                entry = ranked.Get(index);
+
+            string rowName = string.Empty;
+            int kills = 0;
+            int deaths = 0;
+            int assists = 0;
+            int isReceiver = 0;
+            if (entry)
+            {
+                rowName = HudDisplayName(entry);
+                kills = entry.kills;
+                deaths = entry.deaths;
+                assists = entry.assists;
+                if (entry.steamId == receiverId)
+                    isReceiver = 1;
+            }
+            if (rowName == string.Empty)
+                rowName = "?";
+            rpc.Write(rowName);
+            rpc.Write(kills);
+            rpc.Write(deaths);
+            rpc.Write(assists);
+            rpc.Write(isReceiver);
+        }
+        // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
+        rpc.Send(player, NexoDM_RPC.HUD_ROUND_RESULT, true, identity);
+#endif
+    }
+
     protected void BroadcastGlobalTop10()
     {
 #ifdef SERVER
@@ -3032,12 +3150,20 @@ class NexoDM_RoundManager : Managed
             {
                 rowName = row.name;
                 if (rowName == string.Empty)
-                    rowName = row.steamId;
+                {
+                    NexoDM_PlayerEntry ficha = GetEntry(row.steamId);
+                    if (ficha)
+                        rowName = ficha.playerName;
+                }
+                if (rowName == string.Empty)
+                    rowName = "?";
                 rowPoints = row.points;
                 rowKills = row.kills;
                 if (row.steamId == receiverId)
                     isReceiver = 1;
             }
+            if (rowName == string.Empty)
+                rowName = "?";
             rpc.Write(rowName);
             rpc.Write(rowPoints);
             rpc.Write(rowKills);
@@ -3136,6 +3262,18 @@ class NexoDM_RoundManager : Managed
         if (currentTime == 0)
             return true;
         return candidateTime < currentTime;
+    }
+
+    protected string HudDisplayName(NexoDM_PlayerEntry entry)
+    {
+        if (!entry)
+            return "?";
+        string name = GetPlayerName(entry.steamId);
+        if (name == string.Empty)
+            name = entry.playerName;
+        if (name == string.Empty)
+            name = "?";
+        return name;
     }
 
     protected string GetPlayerName(string steamId)

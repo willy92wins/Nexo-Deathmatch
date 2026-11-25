@@ -21,14 +21,17 @@ modded class MissionGameplay
     }
 
     // R2: MissionGameplay.OnMissionFinish() in scripts/5_mission/mission/missiongameplay.c:257.
+    // R1 #6: destroy our HUD BEFORE super: super deletes m_HudRootWidget
+    // (missiongameplay.c:275) and sets MISSION_STATE_FINNISH (:284), so
+    // Destroy() afterwards would touch the already-deleted vanilla HUD.
     override void OnMissionFinish()
     {
-        super.OnMissionFinish();
-
         if (m_HUD)
             m_HUD.Destroy();
 
         m_HUD = null;
+
+        super.OnMissionFinish();
 
         // F5 r2 #14: the client-side HUD data is a static singleton; clear it when the mission ends
         // (disconnect, return to menu) so a later connection never shows stale round data.
