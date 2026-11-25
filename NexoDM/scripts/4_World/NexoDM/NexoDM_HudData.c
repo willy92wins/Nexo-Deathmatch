@@ -143,6 +143,26 @@ class NexoDM_HudData
             m_KillsFeed.Clear();
     }
 
+    // Body removal after the round must not drop the global top before its 10 s.
+    void ResetExceptGlobal()
+    {
+        int keptSerial = m_GlobalSerial;
+        array<ref NexoDM_HudGlobalRow> keptRows = new array<ref NexoDM_HudGlobalRow>;
+        if (m_Global)
+        {
+            int index = 0;
+            for (index = 0; index < m_Global.Count(); index = index + 1)
+                keptRows.Insert(m_Global.Get(index));
+        }
+        Reset();
+        m_GlobalSerial = keptSerial;
+        if (!m_Global)
+            m_Global = new array<ref NexoDM_HudGlobalRow>;
+        int put = 0;
+        for (put = 0; put < keptRows.Count(); put = put + 1)
+            m_Global.Insert(keptRows.Get(put));
+    }
+
     protected void ClearMatchStats()
     {
         m_HasVitals = false;

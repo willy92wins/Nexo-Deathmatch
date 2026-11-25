@@ -72,3 +72,14 @@ Diseño aprobado por Guillermo el 25-nov a las 18:37 (`dev/mocks/hud-nexo-dayz.h
 | 5.8 | Cámara del asesino, menú de pausa, fin de ronda | El HUD nuevo se oculta donde dice el mock y no queda nada pintado fuera de la ronda | capturas |
 | 5.9 | Con LBmaster Groups cargado, pulsar T | Comprobar si se lanza también el ping táctico de grupo (los dos usan kT) | captura |
 | 5.10 | Cliente en inglés | Sin claves `STR_` sueltas | captura |
+
+## F6 · Leaderboard global
+
+| # | Paso | Resultado esperado | Qué recoger |
+|---|---|---|---|
+| 6.1 | `MinPlayersToScore: 20` con 2-3 jugadores; acabar una ronda | `leaderboard.json` con el mismo SHA-256 que antes; log `no puntúa (N < Min)` | hash antes y después, log |
+| 6.2 | `MinPlayersToScore: 2` con 3 jugadores; acabar una ronda | 1.º = kills + 10, 2.º = kills + 9, 3.º = kills + 8 en `leaderboard.json`; `rounds` +1 cada uno | el JSON y el ranking de la ronda (L) |
+| 6.3 | Reiniciar el servidor y jugar otra ronda que puntúe | Los puntos anteriores siguen y se suman | JSON antes y después del reinicio |
+| 6.4 | Corromper `leaderboard.json` a mano (texto basura) y arrancar | Se aparta como `.broken`, aviso en el log, se recupera del `.bak` si existe (si no, vacío) y sin crash | log, ficheros de la carpeta |
+| 6.5 | Al acabar cada ronda | El top 10 global aparece 10 s con el estilo del top 5, tu fila resaltada, y coincide con el JSON; se oculta si empieza otra ronda antes | captura y JSON |
+| 6.6 | `MinPlayersToScore: 0` | La ronda no arranca: `E_CFG_MIN_PLAYERS` en el log | log |

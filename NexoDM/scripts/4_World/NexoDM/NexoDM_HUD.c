@@ -985,9 +985,21 @@ class NexoDM_HUD : Managed
                 m_GlobalHideAt = m_HudTime + NexoDM_Constants.GLOBAL_TOP_SHOW_SEC;
         }
 
+        if (data && data.IsRoundActive())
+            m_GlobalHideAt = m_HudTime;
+
         bool showPanel = false;
         if (serial > 0 && m_HudTime < m_GlobalHideAt)
             showPanel = true;
+        if (m_CountdownActive)
+            showPanel = false;
+        DayZGame game = GetGame();
+        if (game)
+        {
+            UIManager ui = game.GetUIManager();
+            if (ui && ui.GetMenu())
+                showPanel = false;
+        }
         m_GlobalGroup.Show(showPanel);
         if (!showPanel || !data)
             return;

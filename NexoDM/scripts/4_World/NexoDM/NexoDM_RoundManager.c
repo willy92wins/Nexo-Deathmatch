@@ -13,6 +13,7 @@ class NexoDM_PlayerEntry : Managed
     string lastKnifeKillerId;   // E2 kill-credit fallback (scripted knife death -> EEKilled killer=null)
     string lastAttackerId;      // Option A: last participant who damaged this player (any weapon); credits the "downer" when the death reports no killer (respawn-suicide while KO / bleed-out)
     int lastAttackerTimeMs;     // GetTime() of the lastAttackerId hit; recency-gated by ATTACKER_CREDIT_WINDOW_MS
+    string playerName;
 
     void NexoDM_PlayerEntry()
     {
@@ -29,6 +30,7 @@ class NexoDM_PlayerEntry : Managed
         lastKnifeKillerId = string.Empty;
         lastAttackerId = string.Empty;
         lastAttackerTimeMs = 0;
+        playerName = string.Empty;
     }
 }
 
@@ -983,6 +985,8 @@ class NexoDM_RoundManager : Managed
         if (!entry)
             return;
 
+        RememberPlayerName(entry, identity);
+
         if (entry.role != NexoDM_Role.PARTICIPANT)
             return;
 
@@ -1218,10 +1222,13 @@ class NexoDM_RoundManager : Managed
         if (m_State == NexoDM_State.ACTIVE)
         {
             NexoDM_PlayerEntry activeEntry = GetEntry(steamId);
+            if (activeEntry)
+                RememberPlayerName(activeEntry, identity);
             if (!activeEntry)
             {
                 activeEntry = GetOrCreateEntry(steamId);
                 activeEntry.role = NexoDM_Role.PARTICIPANT;
+                RememberPlayerName(activeEntry, identity);
                 if (player.IsAlive() && EnsureConfig())
                 {
                     vector spawn = PickRandomSpawn();
@@ -1271,6 +1278,7 @@ class NexoDM_RoundManager : Managed
         NexoDM_PlayerEntry entry = GetEntry(steamId);
         if (entry)
         {
+            RememberPlayerName(entry, identity);
             // F3 p8: reconnect in the EndRound->ReturnToIdle window (state ENDED, entries
             // not yet cleared) must end with role NONE, not the stale PARTICIPANT.
             if (m_State == NexoDM_State.ENDED || m_State == NexoDM_State.IDLE)
@@ -2957,11 +2965,18 @@ class NexoDM_RoundManager : Managed
                 bonus = NexoDM_Constants.PLACE_BONUS_FIRST - place;
 
             int gained = entry.kills + bonus;
-            string playerName = GetPlayerName(entry.steamId);
+            string playerName = entry.playerName;
+            string liveName = GetPlayerName(entry.steamId);
+            if (liveName != string.Empty)
+            {
+                playerName = liveName;
+                entry.playerName = liveName;
+            }
             board.AddRound(entry.steamId, playerName, gained, entry.kills);
         }
 
-        board.SaveSafe();
+        if (!board.SaveSafe())
+            LogRound("leaderboard no guardado");
 #endif
     }
 
@@ -3169,9 +3184,21 @@ class NexoDM_RoundManager : Managed
 
             NexoDM_PlayerEntry entry = GetOrCreateEntry(steamId);
             entry.role = NexoDM_Role.PARTICIPANT;
+            RememberPlayerName(entry, identity);
             ApplyRoleToPlayer(player, entry.role);
         }
 #endif
+    }
+
+    protected void RememberPlayerName(NexoDM_PlayerEntry entry, PlayerIdentity identity)
+    {
+        if (!entry || !identity)
+            return;
+        // R2: PlayerIdentity.GetName() in scripts/3_game/gameplay.c:362.
+        string seenName = identity.GetName();
+        if (seenName == string.Empty)
+            return;
+        entry.playerName = seenName;
     }
 
     protected NexoDM_PlayerEntry GetOrCreateEntry(string steamId)

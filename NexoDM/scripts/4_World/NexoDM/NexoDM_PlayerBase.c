@@ -97,7 +97,7 @@ modded class PlayerBase
         {
             NexoDM_HudData data = NexoDM_HudData.Get();
             if (data)
-                data.Reset();
+                data.ResetExceptGlobal();
         }
 #endif
         super.EEDelete(parent);
