@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "Admin": ["76561198000000000"],
+  "RoundDuration": 1200,
+  "KillsToWin": 30,
+  "RespawnDelay": 5,
+  "MaxPlayers": 15,
+  "Knife": "HuntingKnife",
+  "KnifeOneHit": true,
+  "Autostart": false,
+  "AutostartDelaySeconds": 300,
+  "ClothingPreset": "Clothes_OK",
+  "Loadouts": ["Loadout_OK_1", "Loadout_OK_2"],
+  "Maps": [
+    {
+      "Name": "Kamyshovo",
+      "WorldName": "ChernarusPlus",
+      "SpawnRadius": 3,
+      "SpawnGroups": [
+        { "Name": "Este", "Points": ["no-es-xyz", "12239.5,5.4,3539.2"] }
+      ]
+    },
+    {
+      "Name": "Topolin",
+      "WorldName": "enoch",
+      "SpawnRadius": 3,
+      "SpawnGroups": [
+        { "Name": "Centro", "Points": ["no-es-xyz"] }
+      ]
+    }
+  ]
+}

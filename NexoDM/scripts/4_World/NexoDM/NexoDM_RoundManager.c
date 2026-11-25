@@ -64,7 +64,7 @@ class NexoDM_RoundManager : Managed
         m_PlayerEntries = new map<string, ref NexoDM_PlayerEntry>;
         m_WarnLog = new map<string, int>;
         m_GG_BirthEquipped = new set<string>();
-        m_SpawnRoundRobinIdx = 0;
+        m_SpawnRoundRobinIdx = -1;
 #endif
     }
 
@@ -120,7 +120,7 @@ class NexoDM_RoundManager : Managed
         // re-arms the unsupervised loop when the round is over.
         StopTimer(m_AutostartTimer);
 
-        // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:25.
+        // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:80.
         m_Config = NexoDM_Config.Load();
         if (!m_Config)
         {
@@ -130,7 +130,7 @@ class NexoDM_RoundManager : Managed
             return;
         }
 
-        // R2: NexoDM_Config.Validate() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:87.
+        // R2: NexoDM_Config.Validate() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:150.
         if (!m_Config.Validate())
         {
             string validateMessage = "start rejected: config validation failed";
@@ -139,14 +139,21 @@ class NexoDM_RoundManager : Managed
             return;
         }
 
-        // F-13/F-14: surface leftover placeholder config (admin 7656XXXX / default presets / default
-        // coords) in the RPT at round start, so a half-configured install is diagnosable.
+        // 4_World half of E_CFG_PRESET: 3_Game only checks non-empty names. CAMBIAR_* defaults do not resolve.
+        if (!LoadoutPresetsExist())
+        {
+            string presetMessage = "start rejected: config preset missing";
+            LogRound(presetMessage);
+            m_State = NexoDM_State.IDLE;
+            return;
+        }
+
+        // Placeholder names (CAMBIAR_*) in the RPT at round start.
         m_Config.LogPlaceholderWarnings();
 
         ResetStats();
-        // F-20v2: reset the "last spawn coord used" tracker at round start (spawn pick is now
-        // uniform-random, not round-robin — see PickRandomSpawn).
-        m_SpawnRoundRobinIdx = 0;
+        // No previous spawn point this round. -1 so the first pick is not treated as a repeat of index 0.
+        m_SpawnRoundRobinIdx = -1;
         EnrollConnectedParticipants();
         m_State = NexoDM_State.ACTIVE;
         BeginRound();
@@ -282,7 +289,7 @@ class NexoDM_RoundManager : Managed
         if (!EnsureConfig())
             return false;
 
-        // R2: NexoDM_Config.GetAdmins() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:152.
+        // R2: NexoDM_Config.GetAdmins() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:253.
         array<string> admins = m_Config.GetAdmins();
         if (!admins)
             return false;
@@ -450,7 +457,7 @@ class NexoDM_RoundManager : Managed
         bool isKnife = false;
         if (attackerIsParticipant && EnsureConfig())
         {
-            // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:169.
+            // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:270.
             string knife = m_Config.GetKnife();
             // R2: Object.IsKindOf(string) in scripts/3_game/entities/object.c:517.
             if (source && knife != string.Empty && source.IsKindOf(knife))
@@ -1092,14 +1099,6 @@ class NexoDM_RoundManager : Managed
 
     protected vector PickRandomSpawn()
     {
-        array<vector> spawnList;
-        float radius = 0.0;
-
-        // R2: NexoDM_Config.GetRespawnCoords() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:218.
-        spawnList = m_Config.GetRespawnCoords();
-        // R2: NexoDM_Config.GetRespawnRadius() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:202.
-        radius = m_Config.GetRespawnRadius();
-
         DayZGame game = GetGame();
         if (!game)
         {
@@ -1107,7 +1106,9 @@ class NexoDM_RoundManager : Managed
             return Vector(0, 0, 0);
         }
 
-        if (!spawnList || spawnList.Count() == 0)
+        // R2: NexoDM_Config.GetValidMaps() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:321.
+        array<ref NexoDM_ParsedMap> maps = m_Config.GetValidMaps();
+        if (!maps || maps.Count() == 0)
         {
             // R2: CGame.SurfaceY(float,float) in scripts/3_game/global/game.c:1162.
             float originY = game.SurfaceY(0, 0);
@@ -1115,28 +1116,146 @@ class NexoDM_RoundManager : Managed
             return Vector(0, originY, 0);
         }
 
-        // F-20v2: uniform-random coord pick. Was a round-robin index (reset to 0 each round) that
-        // clustered players on the first coords of the list — physically close on the map. Reuse
-        // m_SpawnRoundRobinIdx as "last coord used" to avoid two back-to-back spawns on the same coord.
-        // R2: Math.RandomInt(min,max) is max-exclusive (enforce-script-reference Math section).
-        int count = spawnList.Count();
-        int idx = Math.RandomInt(0, count);
-        if (count > 1 && idx == m_SpawnRoundRobinIdx)
-            idx = (idx + 1) % count;
-        m_SpawnRoundRobinIdx = idx;
+        // F3: rotación de mapa. Until then the active arena is the first map of this world.
+        NexoDM_ParsedMap activeMap = maps.Get(0);
+        if (!activeMap || !activeMap.SpawnGroups || activeMap.SpawnGroups.Count() == 0)
+        {
+            float emptyY = game.SurfaceY(0, 0);
+            return Vector(0, emptyY, 0);
+        }
 
-        vector base = spawnList.Get(idx);
+        int groupCount = activeMap.SpawnGroups.Count();
+        // R2: Math.RandomInt(min,max) is max-exclusive (enforce-script-reference Math section).
+        int groupIndex = Math.RandomInt(0, groupCount);
+        NexoDM_ParsedSpawnGroup group = activeMap.SpawnGroups.Get(groupIndex);
+        if (!group || !group.Points || group.Points.Count() == 0)
+        {
+            float groupY = game.SurfaceY(0, 0);
+            return Vector(0, groupY, 0);
+        }
+
+        int pointCount = group.Points.Count();
+        int pointIndex = Math.RandomInt(0, pointCount);
+        int flatIndex = FlatSpawnIndex(activeMap, groupIndex, pointIndex);
+        int totalPoints = CountSpawnPoints(activeMap);
+        if (totalPoints > 1 && flatIndex == m_SpawnRoundRobinIdx)
+        {
+            pointIndex = pointIndex + 1;
+            if (pointIndex >= pointCount)
+            {
+                pointIndex = 0;
+                if (groupCount > 1)
+                {
+                    groupIndex = groupIndex + 1;
+                    if (groupIndex >= groupCount)
+                        groupIndex = 0;
+                    group = activeMap.SpawnGroups.Get(groupIndex);
+                    if (group && group.Points && group.Points.Count() > 0)
+                        pointCount = group.Points.Count();
+                }
+            }
+            if (group && group.Points && pointIndex >= 0 && pointIndex < group.Points.Count())
+                flatIndex = FlatSpawnIndex(activeMap, groupIndex, pointIndex);
+        }
+        m_SpawnRoundRobinIdx = flatIndex;
+
+        vector base = group.Points.Get(pointIndex);
+        float radius = activeMap.SpawnRadius;
         float minRadius = 0.0 - radius;
         // R2: Math.RandomFloat(float,float) in scripts/1_core/proto/enmath.c:91.
         float dx = Math.RandomFloat(minRadius, radius);
         float dz = Math.RandomFloat(minRadius, radius);
         float x = base[0] + dx;
         float z = base[2] + dz;
-        // C1 exact spawn: use the CONFIGURED Y of the coord (base[1]), NOT the terrain.
-        // game.SurfaceY would snap to ground and drop players under structures / the map.
+        // Y stays the configured point. SurfaceY would drop players under the road mesh.
         float y = base[1];
         // R2: Vector(float,float,float) in scripts/1_core/proto/enmath3d.c:18.
         return Vector(x, y, z);
+    }
+
+    protected int CountSpawnPoints(NexoDM_ParsedMap mapCfg)
+    {
+        int total = 0;
+        if (!mapCfg || !mapCfg.SpawnGroups)
+            return total;
+
+        int groupIndex = 0;
+        for (groupIndex = 0; groupIndex < mapCfg.SpawnGroups.Count(); groupIndex = groupIndex + 1)
+        {
+            NexoDM_ParsedSpawnGroup group = mapCfg.SpawnGroups.Get(groupIndex);
+            if (group && group.Points)
+                total = total + group.Points.Count();
+        }
+        return total;
+    }
+
+    protected int FlatSpawnIndex(NexoDM_ParsedMap mapCfg, int groupIndex, int pointIndex)
+    {
+        int flat = pointIndex;
+        if (!mapCfg || !mapCfg.SpawnGroups)
+            return flat;
+
+        int i = 0;
+        for (i = 0; i < groupIndex && i < mapCfg.SpawnGroups.Count(); i = i + 1)
+        {
+            NexoDM_ParsedSpawnGroup group = mapCfg.SpawnGroups.Get(i);
+            if (group && group.Points)
+                flat = flat + group.Points.Count();
+        }
+        return flat;
+    }
+
+    // E_CFG_PRESET in 4_World. 3_Game has already rejected empty names. A missing LBmaster preset rejects the round.
+    protected bool LoadoutPresetsExist()
+    {
+        if (!m_Config)
+            return false;
+
+        array<string> names = new array<string>();
+        names.Insert(m_Config.GetClothingPreset());
+        array<string> loadouts = m_Config.GetLoadouts();
+        if (loadouts)
+        {
+            int i = 0;
+            for (i = 0; i < loadouts.Count(); i = i + 1)
+                names.Insert(loadouts.Get(i));
+        }
+
+        string missing = string.Empty;
+        if (!LB_PresetLoader.Get)
+        {
+            int missingIndex = 0;
+            for (missingIndex = 0; missingIndex < names.Count(); missingIndex = missingIndex + 1)
+            {
+                if (missing != string.Empty)
+                    missing = missing + " ";
+                missing = missing + names.Get(missingIndex);
+            }
+            LogRule(NexoDM_Constants.RULE_PRESET, missing);
+            return false;
+        }
+
+        int nameIndex = 0;
+        for (nameIndex = 0; nameIndex < names.Count(); nameIndex = nameIndex + 1)
+        {
+            string presetName = names.Get(nameIndex);
+            // R2: LB_PresetLoader.GetPreset(string) in LBmaster_Core/scripts/4_World/LBmaster_Core/Config/LB_PresetLoader.c:146.
+            LB_PresetBase preset = LB_PresetLoader.Get.GetPreset(presetName);
+            if (!preset)
+            {
+                if (missing != string.Empty)
+                    missing = missing + " ";
+                missing = missing + presetName;
+            }
+        }
+
+        if (missing != string.Empty)
+        {
+            LogRule(NexoDM_Constants.RULE_PRESET, missing);
+            return false;
+        }
+
+        return true;
     }
 
     protected void WipeInventory(PlayerBase player)
@@ -1365,7 +1484,7 @@ class NexoDM_RoundManager : Managed
 
         if (m_Config)
         {
-            // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:169.
+            // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:270.
             string knife = m_Config.GetKnife();
             // R2: Object.IsKindOf(string) in scripts/3_game/entities/object.c:517.
             if (knife != string.Empty && item.IsKindOf(knife))
@@ -1398,7 +1517,7 @@ class NexoDM_RoundManager : Managed
         if (!m_Config)
             return;
 
-        // R2: NexoDM_Config.GetClothingPreset() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:158.
+        // R2: NexoDM_Config.GetClothingPreset() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:259.
         string clothing = m_Config.GetClothingPreset();
         if (clothing != string.Empty)
         {
@@ -1425,9 +1544,9 @@ class NexoDM_RoundManager : Managed
         if (role != NexoDM_Role.PARTICIPANT)
             return;
 
-        // F3: Loadouts aleatorios
-        // R2: NexoDM_Config.GetGunPresets() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:163.
-        array<string> guns = m_Config.GetGunPresets();
+        // F4: loadout al azar en cada spawn
+        // R2: NexoDM_Config.GetLoadouts() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:264.
+        array<string> guns = m_Config.GetLoadouts();
         if (guns && guns.Count() > 0)
         {
             string gunName = guns.Get(0);
@@ -1482,7 +1601,7 @@ class NexoDM_RoundManager : Managed
         if (!inventory)
             return;
 
-        // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:169.
+        // R2: NexoDM_Config.GetKnife() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:270.
         string knife = m_Config.GetKnife();
         if (knife != string.Empty)
         {
@@ -1890,7 +2009,7 @@ class NexoDM_RoundManager : Managed
         if (m_Config)
             return true;
 
-        // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:25.
+        // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:80.
         m_Config = NexoDM_Config.Load();
         if (m_Config)
             return true;
