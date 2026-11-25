@@ -1,0 +1,20 @@
+# Build output and signing keys (never versioned)
+/build/
+*.pbo
+*.bisign
+*.bikey
+*.biprivatekey
+
+# Local server/client runs
+*.RPT
+*.log
+*.mdmp
+*.ADM
+*.DayZProfile
+/dev/_server/
+/dev/_client/
+
+# Third-party paid code: LBmaster is a dependency, never copied here
+LBmaster*/
+
+__pycache__/

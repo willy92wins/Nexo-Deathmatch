@@ -1,0 +1,8 @@
+# Keep Enforce/config/layout bytes exactly as authored (CRLF from Windows tools).
+*.c -text
+*.cpp -text
+*.layout -text
+*.csv -text
+*.xml -text
+*.sh text eol=lf
+*.py text eol=lf
