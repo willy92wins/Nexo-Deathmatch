@@ -1,0 +1,150 @@
+FrameWidgetClass BoardRoot {
+ position 0 0
+ size 1 1
+ hexactpos 0
+ vexactpos 0
+ hexactsize 0
+ vexactsize 0
+ visible 1
+ {
+  ImageWidgetClass Dim {
+   position 0 0
+   size 1 1
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   ignorepointer 1
+   color 0 0 0 0.45
+  }
+  ImageWidgetClass BoardPanel {
+   position 0.30 0.16
+   size 0.40 0.68
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   ignorepointer 1
+   color 0.094 0.10 0.078 0.95
+   {
+    TextWidgetClass BoardTitle {
+     position 0.04 0.03
+     size 0.6 0.07
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text "#STR_NEXODM_SCOREBOARD_TITLE"
+     color 0.89 0.88 0.84 1
+    }
+    TextWidgetClass BoardTitleEN {
+     position 0.04 0.10
+     size 0.6 0.04
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text "Leaderboard"
+     color 0.66 0.65 0.61 1
+    }
+    TextWidgetClass BoardMeta {
+     position 0.64 0.05
+     size 0.32 0.05
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     ignorepointer 1
+     text "GUNGAME"
+     color 0.66 0.65 0.61 1
+    }
+    FrameWidgetClass ColHeader {
+     position 0.04 0.16
+     size 0.92 0.05
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+     {
+      TextWidgetClass ColRank {
+       position 0.0 0
+       size 0.07 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "#"
+       color 0.47 0.46 0.43 1
+      }
+      TextWidgetClass ColPlayer {
+       position 0.07 0
+       size 0.36 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "#STR_NEXODM_SCOREBOARD_PLAYER"
+       color 0.47 0.46 0.43 1
+      }
+      TextWidgetClass ColWeapon {
+       position 0.43 0
+       size 0.33 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "#STR_NEXODM_SCOREBOARD_TIER"
+       color 0.47 0.46 0.43 1
+      }
+      TextWidgetClass ColK {
+       position 0.78 0
+       size 0.07 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "K"
+       color 0.47 0.46 0.43 1
+      }
+      TextWidgetClass ColA {
+       position 0.86 0
+       size 0.07 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "A"
+       color 0.47 0.46 0.43 1
+      }
+      TextWidgetClass ColD {
+       position 0.93 0
+       size 0.07 1
+       hexactpos 0
+       vexactpos 0
+       hexactsize 0
+       vexactsize 0
+       ignorepointer 1
+       text "D"
+       color 0.47 0.46 0.43 1
+      }
+     }
+    }
+    WrapSpacerWidgetClass RowsContainer {
+     position 0.04 0.22
+     size 0.92 0.74
+     hexactpos 0
+     vexactpos 0
+     hexactsize 0
+     vexactsize 0
+    }
+   }
+  }
+ }
+}
