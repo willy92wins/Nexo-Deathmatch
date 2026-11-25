@@ -1505,8 +1505,8 @@ class NexoDM_RoundManager : Managed
 
     // GG-01v5 birth-equip resolution: decide whether a fresh character about to be created belongs to a
     // participant in an ACTIVE round, and if so return the gungame spawn so MissionServer can
-    // create the character AT that spawn (no double-load lag) and equip it during creation. Pure read,
-    // no state mutation; PickRandomSpawn's random pick is consumed once by the caller (OnPlayerRespawn
+    // create the character AT that spawn (no double-load lag) and equip it during creation. Only mutation:
+    // enrolling a player with no entry as participant (F1); PickRandomSpawn's random pick is consumed once by the caller (OnPlayerRespawn
     // skips its own PickRandomSpawn for this player via the bornEquipped guard).
     bool ResolveParticipantBirthSpawn(string steamId, out vector spawn)
     {
