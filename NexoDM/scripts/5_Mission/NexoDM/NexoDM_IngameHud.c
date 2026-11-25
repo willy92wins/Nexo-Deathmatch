@@ -101,8 +101,12 @@ modded class IngameHud
             return;
 
         // Restore once on leaving the round; afterwards vanilla/widget
-        // scripts own these widgets again (ItemActionsWidget.Update will
-        // show/hide ItemActions by hands, DisplayPresence its children).
+        // scripts own these widgets again. ItemActions is NOT forced visible:
+        // ItemActionsWidget.Update (itemactionswidget.c:189-221) decides it
+        // per frame (HUD flags, hands, open menu). PresencePanel follows the
+        // vanilla LHUD rule (ingamehudvisibility.c:135-141), so it stays
+        // hidden with the HUD disabled/hidden, a menu open, unconscious or in
+        // a vehicle, unless the inventory is open.
         if (m_NexoThirsty)
             m_NexoThirsty.Show(true);
         if (m_NexoHungry)
@@ -112,9 +116,22 @@ modded class IngameHud
         if (m_NexoNotifierDivider)
             m_NexoNotifierDivider.Show(true);
         if (m_NexoPresence)
-            m_NexoPresence.Show(true);
-        if (m_NexoItemActions)
-            m_NexoItemActions.Show(true);
+            m_NexoPresence.Show(NexoDM_VanillaPresenceVisible());
         m_NexoRoundHudHidden = false;
+    }
+
+    // Mirrors IngameHudVisibility.UpdateElement for LHUD_PRESENCE
+    // (P:\scripts\5_mission\gui\ingamehudvisibility.c:135-141) through the
+    // public IsContextFlagActive (:120) and HUD_HIDE_FLAGS (:43).
+    protected bool NexoDM_VanillaPresenceVisible()
+    {
+        IngameHudVisibility vis = GetHudVisibility();
+        if (!vis)
+            return true;
+        if (vis.IsContextFlagActive(EHudContextFlags.INVENTORY_OPEN))
+            return true;
+        if (vis.IsContextFlagActive(IngameHudVisibility.HUD_HIDE_FLAGS | EHudContextFlags.VEHICLE))
+            return false;
+        return true;
     }
 }

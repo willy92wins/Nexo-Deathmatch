@@ -1064,7 +1064,11 @@ class NexoDM_HUD : Managed
             if (cam && cam.IsSuppressingDeathScreen())
                 blocked = true;
             PlayerBase endPlayer = PlayerBase.Cast(game.GetPlayer());
-            if (endPlayer && !endPlayer.IsAlive())
+            // R2 #5: no local player (corpse deleted, respawn gap), dead or
+            // unconscious -> never draw over death/KO screens.
+            // R2: Man.IsUnconscious() in scripts/3_game/entities/man.c:63,
+            // PlayerBase override scripts/4_world/entities/manbase/playerbase.c:3925.
+            if (!endPlayer || !endPlayer.IsAlive() || endPlayer.IsUnconscious())
                 blocked = true;
             Mission mission = game.GetMission();
             if (mission && mission.IsPlayerRespawning())
