@@ -33,6 +33,12 @@ modded class PlayerBase
             NexoDM_HandleScoreboardDataRPC(ctx);
             return;
         }
+
+        if (rpc_type == NexoDM_RPC.KILLER_CAM)
+        {
+            NexoDM_HandleKillerCamRPC(ctx);
+            return;
+        }
     }
 
     // R2: PlayerBase.EEKilled(Object) in scripts/4_world/entities/manbase/playerbase.c:1183.
@@ -132,6 +138,7 @@ modded class PlayerBase
             int kills;
             int assists;
             int deaths;
+            int points;
             if (!ctx.Read(name))
                 return;
             if (!ctx.Read(kills))
@@ -140,18 +147,50 @@ modded class PlayerBase
                 return;
             if (!ctx.Read(deaths))
                 return;
+            if (!ctx.Read(points))
+                return;
 
             NexoDM_ScoreRow row = new NexoDM_ScoreRow();
             row.name = name;
             row.kills = kills;
             row.assists = assists;
             row.deaths = deaths;
+            row.points = points;
             rows.Insert(row);
         }
 
         NexoDM_Scoreboard board = NexoDM_Scoreboard.GetInstance();
         if (board)
             board.SetData(rows);
+#endif
+    }
+
+    protected void NexoDM_HandleKillerCamRPC(ParamsReadContext ctx)
+    {
+#ifndef SERVER
+        // R2: GetGame() in scripts/3_game/gameplay.c:636; DayZGame.IsDedicatedServer() in scripts/3_game/global/game.c:1127.
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+
+        if (game.IsDedicatedServer())
+            return;
+
+        Param3<int, int, int> payload = new Param3<int, int, int>(0, 0, 0);
+        // R2: Serializer.Read(void) in scripts/1_core/proto/serializer.c:58.
+        // Fail-closed: an incomplete payload is discarded whole (no camera, no respawn).
+        if (!ctx.Read(payload))
+            return;
+
+        if (payload.param3 < 0)
+            return;
+
+        vector corpsePos = GetPosition();
+        NexoDM_KillerCam cam = NexoDM_KillerCam.Get();
+        if (!cam)
+            return;
+
+        cam.Start(payload.param1, payload.param2, payload.param3, corpsePos);
 #endif
     }
 

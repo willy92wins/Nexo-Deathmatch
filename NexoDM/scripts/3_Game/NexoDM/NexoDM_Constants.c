@@ -83,4 +83,13 @@ class NexoDM_Constants
     static const string MSG_NO_WINNER = "Juego de Armas terminado sin ganador.";
     static const string MSG_ROUND_STARTED = "Juego de Armas iniciado.";
     static const string MSG_ROUND_STOPPED = "Juego de Armas detenido.";
+    static const string MSG_ROUND_START_REJECTED = "Ronda no iniciada: el config no es válido. Revisa el log del servidor.";
+
+    // F3 p1: chat commands (renamed from gungame/gungamestop).
+    static const string CHAT_CMD_START = "nexodm";
+    static const string CHAT_CMD_STOP = "nexodmstop";
+
+    // F3 p5: scoring.
+    static const int POINTS_PER_KILL = 100;
+    static const int POINTS_PER_ASSIST = 50;
 }

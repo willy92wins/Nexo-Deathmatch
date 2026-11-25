@@ -25,6 +25,11 @@ modded class MissionGameplay
             m_HUD.Destroy();
 
         m_HUD = null;
+
+        // F3 p3: never leak the killer camera past the mission.
+        NexoDM_KillerCam killerCam = NexoDM_KillerCam.Get();
+        if (killerCam)
+            killerCam.Abort();
     }
 
     // R2: MissionGameplay.OnUpdate(float) in scripts/5_mission/mission/missiongameplay.c:278.
@@ -34,6 +39,11 @@ modded class MissionGameplay
 
         if (m_HUD)
             m_HUD.OnUpdate(timeslice);
+
+        // F3 p3: per-frame killer-camera tracking (re-resolves the killer each frame).
+        NexoDM_KillerCam killerCamTick = NexoDM_KillerCam.Get();
+        if (killerCamTick)
+            killerCamTick.OnUpdate(timeslice);
 
         NexoDM_UpdateScoreboardToggle();
         NexoDM_UpdateScoreboardEscClose();

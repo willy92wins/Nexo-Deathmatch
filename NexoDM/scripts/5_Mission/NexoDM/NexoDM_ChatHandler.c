@@ -43,13 +43,22 @@ modded class LBChatHandler
         }
 
         int state = manager.GetState();
-        if (cmd == "gungame")
+        if (cmd == NexoDM_Constants.CHAT_CMD_START)
         {
             if (state == NexoDM_State.IDLE)
             {
                 manager.StartGame();
-                string startedAck = NexoDM_Constants.MSG_ROUND_STARTED;
-                SendSimpleChatMessage(sender, startedAck, false);
+                // F3 p1: only confirm when the round actually entered ACTIVE.
+                if (manager.GetState() == NexoDM_State.ACTIVE)
+                {
+                    string startedAck = NexoDM_Constants.MSG_ROUND_STARTED;
+                    SendSimpleChatMessage(sender, startedAck, false);
+                }
+                else
+                {
+                    string rejectedAck = NexoDM_Constants.MSG_ROUND_START_REJECTED;
+                    SendSimpleChatMessage(sender, rejectedAck, false);
+                }
                 return;
             }
 
@@ -58,7 +67,7 @@ modded class LBChatHandler
             return;
         }
 
-        if (cmd == "gungamestop")
+        if (cmd == NexoDM_Constants.CHAT_CMD_STOP)
         {
             if (state != NexoDM_State.IDLE)
             {
@@ -79,10 +88,10 @@ modded class LBChatHandler
 
     protected bool NexoDM_IsCommand(string cmd)
     {
-        if (cmd == "gungame")
+        if (cmd == NexoDM_Constants.CHAT_CMD_START)
             return true;
 
-        if (cmd == "gungamestop")
+        if (cmd == NexoDM_Constants.CHAT_CMD_STOP)
             return true;
 
         return false;
