@@ -678,6 +678,7 @@ modded class PlayerBase
             int kills;
             int deaths;
             int assists;
+            bool isReceiver;
             if (!ctx.Read(name))
                 return;
             if (name == string.Empty)
@@ -689,6 +690,9 @@ modded class PlayerBase
             if (!ctx.Read(deaths))
                 return;
             if (!ctx.Read(assists))
+                return;
+            // R2: Serializer.Read(void) in scripts/1_core/proto/serializer.c:58.
+            if (!ctx.Read(isReceiver))
                 return;
             if (points < 0)
                 return;
@@ -705,6 +709,7 @@ modded class PlayerBase
             row.kills = kills;
             row.deaths = deaths;
             row.assists = assists;
+            row.isReceiver = isReceiver;
             rows.Insert(row);
         }
 

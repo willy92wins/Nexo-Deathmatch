@@ -69,6 +69,8 @@ class NexoDM_HUD : Managed
     protected int m_GlobalSerialSeen;
     protected float m_GlobalHideAt;
     protected bool m_GlobalPending;
+    protected float m_GlobalStartAt;
+    protected float m_GlobalArrivalAt;
     protected float m_HudTime;
     protected float m_RefreshAcc;
     protected int m_KillSeenCount;
@@ -100,6 +102,8 @@ class NexoDM_HUD : Managed
         m_GlobalSerialSeen = 0;
         m_GlobalHideAt = 0;
         m_GlobalPending = false;
+        m_GlobalStartAt = 0;
+        m_GlobalArrivalAt = 0;
         m_HudTime = 0;
         m_RefreshAcc = 0;
         m_KillSeenCount = 0;
@@ -291,6 +295,8 @@ class NexoDM_HUD : Managed
         m_GlobalSerialSeen = 0;
         m_GlobalHideAt = 0;
         m_GlobalPending = false;
+        m_GlobalStartAt = 0;
+        m_GlobalArrivalAt = 0;
         m_HudVisible = false;
         m_TimeLeft = -1;
         m_CountTotal = 0;
@@ -746,7 +752,14 @@ class NexoDM_HUD : Managed
                 m_KillIconOrder.Insert(weaponClass);
                 return cached;
             }
+            // R1 #7: cached entity became null externally. Remove the key
+            // from BOTH structures, otherwise the Insert below duplicates
+            // it in m_KillIconOrder and EvictKillIcons later deletes the
+            // freshly created (live) entity when it pops the stale copy.
             m_KillIconCache.Remove(weaponClass);
+            int staleIndex = m_KillIconOrder.Find(weaponClass);
+            if (staleIndex >= 0)
+                m_KillIconOrder.Remove(staleIndex);
         }
         DayZGame game = GetGame();
         if (!game)
@@ -768,6 +781,10 @@ class NexoDM_HUD : Managed
         created.DisableSimulation(true);
         created.SetAllowDamage(false);
         m_KillIconCache.Set(weaponClass, created);
+        // R1 #7: never duplicate the key in the LRU order.
+        int existingIndex = m_KillIconOrder.Find(weaponClass);
+        if (existingIndex >= 0)
+            m_KillIconOrder.Remove(existingIndex);
         m_KillIconOrder.Insert(weaponClass);
         EvictKillIcons();
         return created;
@@ -939,14 +956,6 @@ class NexoDM_HUD : Managed
         NexoDM_HudData data = NexoDM_HudData.Get();
         if (!data)
             return;
-        string myName = "";
-        DayZGame game = GetGame();
-        if (game)
-        {
-            PlayerBase player = PlayerBase.Cast(game.GetPlayer());
-            if (player && player.GetIdentity())
-                myName = player.GetIdentity().GetName();
-        }
         int rowIndex = 0;
         for (rowIndex = 0; rowIndex < TOP_ROWS; rowIndex = rowIndex + 1)
         {
@@ -962,14 +971,10 @@ class NexoDM_HUD : Managed
             if (row)
                 row.Show(true);
             string name = data.GetTopName(rowIndex);
-            bool isMe = false;
-            if (myName != string.Empty && name == myName)
-                isMe = true;
-            if (data.HasSelf() && data.GetRank() == rowIndex + 1)
-            {
-                if (myName == string.Empty)
-                    isMe = true;
-            }
+            // R1 #3: own row only by the per-row receiver flag from
+            // HUD_TOP5 (NexoDM_HudData.GetTopIsReceiver), never by name:
+            // repeated names (e.g. "Survivor") highlighted foreign rows.
+            bool isMe = data.GetTopIsReceiver(rowIndex);
             ImageWidget bg = null;
             if (rowIndex < m_TopRowBgs.Count())
                 bg = m_TopRowBgs.Get(rowIndex);
@@ -1031,7 +1036,14 @@ class NexoDM_HUD : Managed
     }
 
     // End of round, in order: round classification (10 s), then global top 10 (10 s).
-    // The global window only starts when the panel first shows, so its 10 s are whole.
+    // R1 #5: neither panel shows over countdown, a menu, the killer camera,
+    // death or respawn. R1 #5/#11: the global window is anchored to its start
+    // (end of the round classification, or its arrival if there is none), not
+    // to the first unblocked frame: m_HudTime keeps advancing while blocked
+    // (UpdateHud), so a pause that outlives the window expires it instead of
+    // firing it late. Killer camera: NexoDM_KillerCam.IsActive /
+    // IsSuppressingDeathScreen; respawn: Mission.IsPlayerRespawning in
+    // P:\scripts\3_game\gameplay.c:827.
     protected void UpdateEndPanels()
     {
         if (!m_RoundGroup || !m_GlobalGroup)
@@ -1046,6 +1058,17 @@ class NexoDM_HUD : Managed
             UIManager ui = game.GetUIManager();
             if (ui && ui.GetMenu())
                 blocked = true;
+            NexoDM_KillerCam cam = NexoDM_KillerCam.Get();
+            if (cam && cam.IsActive())
+                blocked = true;
+            if (cam && cam.IsSuppressingDeathScreen())
+                blocked = true;
+            PlayerBase endPlayer = PlayerBase.Cast(game.GetPlayer());
+            if (endPlayer && !endPlayer.IsAlive())
+                blocked = true;
+            Mission mission = game.GetMission();
+            if (mission && mission.IsPlayerRespawning())
+                blocked = true;
         }
         int roundSerial = 0;
         if (data)
@@ -1054,7 +1077,16 @@ class NexoDM_HUD : Managed
         {
             m_RoundSerialSeen = roundSerial;
             if (roundSerial > 0)
+            {
                 m_RoundHideAt = m_HudTime + END_PANEL_SECONDS;
+                // R1 #11: global already arrived before the round result:
+                // its window starts when this classification ends.
+                if (m_GlobalPending)
+                {
+                    m_GlobalStartAt = m_RoundHideAt;
+                    m_GlobalHideAt = m_GlobalStartAt + NexoDM_Constants.GLOBAL_TOP_SHOW_SEC;
+                }
+            }
         }
         if (data && data.IsRoundActive())
             m_RoundHideAt = m_HudTime;
@@ -1074,26 +1106,37 @@ class NexoDM_HUD : Managed
             {
                 m_GlobalPending = true;
                 m_GlobalHideAt = 0;
+                m_GlobalStartAt = 0;
+                m_GlobalArrivalAt = m_HudTime;
             }
         }
         if (data && data.IsRoundActive())
         {
-            m_GlobalHideAt = m_HudTime;
+            m_GlobalHideAt = 0;
+            m_GlobalStartAt = 0;
+            m_GlobalArrivalAt = 0;
             m_GlobalPending = false;
         }
-        bool showGlobal = false;
-        if (m_GlobalPending && !showRound && !blocked)
+        // Anchor the global window even while blocked or behind the round
+        // panel, so it can expire on time instead of starting late.
+        if (m_GlobalPending && m_GlobalHideAt <= 0)
         {
-            if (m_GlobalHideAt <= 0)
-                m_GlobalHideAt = m_HudTime + NexoDM_Constants.GLOBAL_TOP_SHOW_SEC;
-            if (m_HudTime < m_GlobalHideAt)
-                showGlobal = true;
-            else
-            {
-                m_GlobalPending = false;
-                m_GlobalHideAt = 0;
-            }
+            float globalStart = m_GlobalArrivalAt;
+            if (roundSerial > 0 && m_RoundHideAt > globalStart)
+                globalStart = m_RoundHideAt;
+            m_GlobalStartAt = globalStart;
+            m_GlobalHideAt = globalStart + NexoDM_Constants.GLOBAL_TOP_SHOW_SEC;
         }
+        if (m_GlobalPending && m_GlobalHideAt > 0 && m_HudTime >= m_GlobalHideAt)
+        {
+            m_GlobalPending = false;
+            m_GlobalHideAt = 0;
+            m_GlobalStartAt = 0;
+            m_GlobalArrivalAt = 0;
+        }
+        bool showGlobal = false;
+        if (m_GlobalPending && !showRound && !blocked && m_GlobalHideAt > 0 && m_HudTime >= m_GlobalStartAt && m_HudTime < m_GlobalHideAt)
+            showGlobal = true;
         m_GlobalGroup.Show(showGlobal);
         if (showGlobal && data)
             FillGlobalPanel(data);

@@ -5,6 +5,7 @@ class NexoDM_HudTopRow
     int kills;
     int deaths;
     int assists;
+    bool isReceiver;
 }
 
 class NexoDM_HudGlobalRow
@@ -391,6 +392,14 @@ class NexoDM_HudData
         if (!row)
             return 0;
         return row.assists;
+    }
+
+    bool GetTopIsReceiver(int index)
+    {
+        NexoDM_HudTopRow row = TopRow(index);
+        if (!row)
+            return false;
+        return row.isReceiver;
     }
 
     void SetGlobal(array<ref NexoDM_HudGlobalRow> rows)

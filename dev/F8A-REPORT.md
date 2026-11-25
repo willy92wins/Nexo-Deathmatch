@@ -51,7 +51,7 @@ En todos, el `return` ocurre antes de escribir el almacén. Casos rotos de `HUD_
 | RPC | Id | Tipos en orden | A quién | Cuándo |
 |---|---|---|---|---|
 | HUD_SELF | 74621709 | `int` puntos, `int` bajas, `int` muertes, `int` asistencias, `int` puesto | solo el dueño | igual que antes: al entrar, al cambiar su ficha y al reenviar rangos tras una baja o una desconexión |
-| HUD_TOP5 | 74621710 | `int` filas (0..5); por fila `string` nombre, `int` puntos, `int` bajas, `int` muertes, `int` asistencias | participantes; copia directa al que entra | igual que antes: cuando cambia el top 5 (ahora también si solo cambian asistencias), como mucho un broadcast por segundo; también al entrar y al cerrar la ronda (`FlushHudTop5`) |
+| HUD_TOP5 | 74621710 | `int` filas (0..5); por fila `string` nombre, `int` puntos, `int` bajas, `int` muertes, `int` asistencias, `bool` es el receptor | cada participante, con su propio flag; copia directa al que entra | igual que antes: cuando cambia el top 5 (ahora también si solo cambian asistencias), como mucho un broadcast por segundo; también al entrar y al cerrar la ronda (`FlushHudTop5`) |
 | HUD_KILL | 74621711 | `string` asesino, `string` víctima, `string` classname (vacío si no hay) | participantes conectados | cada baja puntuable con la ronda ACTIVE. Sin cambio de destinatarios |
 | HUD_ROUND_RESULT | 74621713 | `string` ganador (vacío si no hay), `string` mapa de la ronda que acaba, `int` `KillsToWin`, `int` filas (0..64); por fila `string` nombre, `int` bajas, `int` muertes, `int` asistencias, `int` es el receptor (1/0) | cada participante conectado | al acabar una ronda que estuvo ACTIVE, antes de `HUD_GLOBAL_TOP10` |
 
@@ -62,3 +62,12 @@ En todos, el `return` ocurre antes de escribir el almacén. Casos rotos de `HUD_
 - No medí en un cliente que `HUD_ROUND_RESULT` llegue antes que `HUD_GLOBAL_TOP10`. En `EndRound` el `Send` del resultado está en la línea anterior al del top 10, al mismo identity.
 - No comprobé `Param` de script: `HUD_SELF` pasó de un `Param4` a cinco enteros sueltos. El orden es el de los `Write`/`Read` de arriba; no hay prueba de red.
 - El HUD visual sigue leyendo puntos en `NexoDM_HUD.c`. Esta fase no lo cambia: bajas, muertes y asistencias ya están en `NexoDM_HudData` para el siguiente implementador (`GetAssists`, `GetTopAssists`, `GetRoundResultSerial`).
+
+## Corrección 1
+
+Revisión `F8-REVIEW-R1.md`, solo #3 y #10.
+
+- **#3.** Cada fila de `HUD_TOP5` lleva al final un `bool` (`true` si el SteamID de la fila es el del destinatario). El envío ya era uno por participante (`SendHudTop5To`, `NexoDM_RoundManager.c:2855`); el flag se calcula ahí con `identity.GetPlainId()` (`:2890`) y se escribe en `:2900`. El tope de un broadcast por segundo no se ha movido (`RequestHudTop5`). El cliente lo lee en `NexoDM_HandleHudTop5RPC` (`NexoDM_PlayerBase.c:695`) y lo guarda en `NexoDM_HudTopRow.isReceiver`. Getter: `GetTopIsReceiver` (`NexoDM_HudData.c:397`). Un `Read` que falla sigue sin llamar a `SetTop`.
+- **#10.** `HudDisplayName` (`NexoDM_RoundManager.c:3267`): `GetPlayerName`, si vacío `playerName`, si vacío `"?"`. Lo usan `SendHudTop5To` y `SendRoundResultTo`. `HUD_GLOBAL_TOP10` hace lo mismo con el nombre de la tabla y, si falta, la ficha del SteamID (`NexoDM_RoundManager.c:3154`); si sigue vacío, `"?"` (`:3159` y `:3166`). Ya no se manda el SteamID ni un nombre vacío en esas filas.
+
+No se ha compilado ni probado en juego. El HUD visual sigue comparando nombres; esta corrección no lo cambia.
