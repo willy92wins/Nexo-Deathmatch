@@ -58,7 +58,7 @@ Hacen falta 2 clientes (A y B). La config tiene `RespawnDelay: 5`, `KillsToWin: 
 
 ## F5 · HUD
 
-Antes de la prueba, Guillermo da el visto bueno al layout (`dev/mocks/hud-nexo-dayz.html` frente a la captura del juego).
+Diseño aprobado por Guillermo el 25-nov a las 18:37 (`dev/mocks/hud-nexo-dayz.html`, SHA-256 `B0D40554…DF45`). En la prueba se compara la captura del juego con ese mock.
 
 | # | Paso | Resultado esperado | Qué recoger |
 |---|---|---|---|
