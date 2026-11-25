@@ -232,6 +232,21 @@ class NexoDM_RoundManager : Managed
             AnnounceWinner(reason, winnerSteamId);
         }
 
+        // #6: strip weapons/mags/ammo from every connected participant now, so
+        // nothing is kept through IDLE (BeginRound ground cleanup stays as-is).
+        EnsureCollections();
+        int wipeIndex = 0;
+        for (wipeIndex = 0; wipeIndex < m_PlayerEntries.Count(); wipeIndex = wipeIndex + 1)
+        {
+            NexoDM_PlayerEntry wipeEntry = m_PlayerEntries.GetElement(wipeIndex);
+            if (!wipeEntry || wipeEntry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            string wipeSteamId = m_PlayerEntries.GetKey(wipeIndex);
+            PlayerBase wipePlayer = FindPlayerBySteamId(wipeSteamId);
+            if (wipePlayer)
+                WipeWeaponsOnly(wipePlayer);
+        }
+
         // Drop the synced participant role so the scoreboard gate closes with the round.
         EnsureCollections();
         int roleIndex = 0;
@@ -1098,6 +1113,16 @@ class NexoDM_RoundManager : Managed
         if (!identity || !player)
             return;
 
+        // #9: a player frozen at disconnect stays frozen in the reconnect cache;
+        // if no freeze is active now, thaw them (freeze paths below re-freeze if needed).
+        if (!m_FreezeActive)
+        {
+            // R2: Entity.DisableSimulation(bool) in scripts/3_game/entities/entity.c:3.
+            player.DisableSimulation(false);
+            // R2: Object.SetAllowDamage(bool) in scripts/3_game/entities/object.c:1192.
+            player.SetAllowDamage(true);
+        }
+
         // R2: PlayerIdentity.GetPlainId() in scripts/3_game/gameplay.c:370.
         string steamId = identity.GetPlainId();
         if (steamId == string.Empty)
@@ -1299,6 +1324,13 @@ class NexoDM_RoundManager : Managed
             if (picked != current && picked != previous)
                 return picked;
             guard = guard + 1;
+        }
+        // #7: deterministic fallback - first index distinct from current and previous.
+        int fallback = 0;
+        for (fallback = 0; fallback < count; fallback = fallback + 1)
+        {
+            if (fallback != current && fallback != previous)
+                return fallback;
         }
         return picked;
     }
