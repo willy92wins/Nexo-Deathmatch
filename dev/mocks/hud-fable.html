@@ -1,0 +1,306 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Nexo HUD — mock Fable</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;1,700;1,800&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: página oscura única; cada pantalla es un lienzo 16:9 que escala con cqw.
+   El HUD vive en las cuatro esquinas y deja el centro libre para apuntar. */
+:root{
+  color-scheme: dark;
+  --page:#12150f;        /* verde pizarra casi negro */
+  --panel:#1b1f17;
+  --line:#2f3528;
+  --bone:#ece7d6;        /* texto principal del HUD */
+  --dim:#a3a08f;         /* texto secundario */
+  --stencil:#f0c22e;     /* amarillo de plantilla militar: tú y lo importante */
+  --blood:#e2412e;       /* solo para vida baja */
+  --shade:rgba(8,10,7,.62);
+  --display:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --body:"Barlow","Segoe UI",system-ui,sans-serif;
+}
+body{
+  background:var(--page); color:var(--bone); font-family:var(--body);
+  padding-block:28px 48px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+header h1{font-family:var(--display);font-weight:700;font-size:34px;letter-spacing:.02em;text-transform:uppercase;margin:0;text-wrap:balance}
+header p{margin:6px 0 0;color:var(--dim);max-width:65ch;font-size:15px;line-height:1.5}
+.frame{display:flex;flex-direction:column;gap:10px}
+.frame-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;justify-content:space-between}
+.frame-head h2{font-family:var(--display);font-weight:600;font-size:18px;letter-spacing:.12em;text-transform:uppercase;margin:0;color:var(--dim)}
+.toggle{display:flex;gap:6px}
+.toggle button{
+  font:600 13px var(--body);color:var(--dim);background:var(--panel);border:1px solid var(--line);
+  padding:7px 12px;border-radius:3px;cursor:pointer
+}
+.toggle button[aria-pressed="true"]{color:var(--page);background:var(--stencil);border-color:var(--stencil)}
+.toggle button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
+
+/* ---------- lienzo de juego ---------- */
+.stage{position:relative;aspect-ratio:16/9;width:100%;max-width:100%;container-type:inline-size;overflow:hidden;background:#3c443c;border:1px solid var(--line)}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.stage .vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 55%,transparent 45%,rgba(6,8,5,.55) 100%);transition:background .3s}
+.hud{position:absolute;inset:0;font-size:1cqw;font-family:var(--display);color:var(--bone);text-transform:uppercase;font-variant-numeric:tabular-nums;text-shadow:0 .08em .5em rgba(0,0,0,.75)}
+.hud > *{position:absolute}
+.lbl{font-weight:600;font-size:1.05em;letter-spacing:.18em;color:var(--dim)}
+.y{color:var(--stencil)}
+
+/* arriba izquierda: puntuación */
+.score{top:2.6em;left:3em;display:flex;align-items:flex-end;gap:1.1em}
+.score .rank{font-style:italic;font-weight:800;font-size:5.4em;line-height:.8;color:var(--stencil)}
+.score .rank small{font-size:.45em;margin-right:.05em}
+.score .pts{display:flex;flex-direction:column;gap:.25em}
+.score .pts b{font-weight:700;font-size:2.5em;line-height:.9;letter-spacing:.01em}
+.score .kd{font-weight:600;font-size:1.15em;letter-spacing:.12em;color:var(--dim)}
+.score .kd i{font-style:normal;color:var(--bone)}
+
+/* arriba centro: reloj y objetivo */
+.clock{top:2.4em;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:.5em;width:22em}
+.clock .t{font-weight:700;font-size:2.7em;line-height:.9;letter-spacing:.04em}
+.goal{position:relative;width:100%;height:.35em;background:rgba(236,231,214,.22)}
+.goal span{position:absolute;top:-.3em;width:.25em;height:.95em}
+.goal .me{left:46.6%;background:var(--stencil)}
+.goal .lead{left:53.3%;background:var(--bone)}
+.clock .map{font-weight:600;font-size:1em;letter-spacing:.2em;color:var(--dim);white-space:nowrap}
+
+/* arriba derecha: tabla corta */
+.board{top:2.4em;right:3em;width:21em;display:flex;flex-direction:column;gap:.18em}
+.board .lbl{display:flex;justify-content:space-between;padding:0 .7em .35em}
+.row{display:grid;grid-template-columns:1.5em 1fr auto;gap:.6em;align-items:center;padding:.28em .7em;background:linear-gradient(90deg,transparent,var(--shade));font-weight:600;font-size:1.3em;letter-spacing:.04em}
+.row .n{color:var(--dim)}
+.row .k{font-weight:700}
+.row.me{background:var(--stencil);color:#16180f;text-shadow:none}
+.row.me .n{color:#16180f}
+.feed{top:17.6em;right:3em;width:21em;display:flex;flex-direction:column;gap:.3em;align-items:flex-end;font-weight:500;font-size:1.05em;letter-spacing:.06em;color:var(--dim)}
+.feed b{font-weight:600;color:var(--bone)}
+.feed .old{opacity:.55}
+
+/* centro: mira y aviso de baja */
+.cross{top:50%;left:50%;width:2.2em;height:2.2em;transform:translate(-50%,-50%)}
+.cross i{position:absolute;background:var(--bone);box-shadow:0 0 .3em rgba(0,0,0,.8)}
+.cross i:nth-child(1),.cross i:nth-child(2){width:.16em;height:.6em;left:calc(50% - .08em)}
+.cross i:nth-child(1){top:0}.cross i:nth-child(2){bottom:0}
+.cross i:nth-child(3),.cross i:nth-child(4){height:.16em;width:.6em;top:calc(50% - .08em)}
+.cross i:nth-child(3){left:0}.cross i:nth-child(4){right:0}
+.pop{top:58%;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:.7em;white-space:nowrap}
+.pop b{font-style:italic;font-weight:800;font-size:2.4em;color:var(--stencil)}
+.pop span{font-weight:600;font-size:1.2em;letter-spacing:.14em}
+
+/* abajo izquierda: vida */
+.health{left:3em;bottom:2.8em;display:flex;align-items:flex-end;gap:1.2em}
+.health .num{font-style:italic;font-weight:800;font-size:8em;line-height:.74;letter-spacing:-.01em}
+.health .col{display:flex;flex-direction:column;gap:.55em;padding-bottom:.2em}
+.segs{display:flex;gap:.3em}
+.segs i{width:1.5em;height:.9em;background:rgba(236,231,214,.2);transform:skewX(-18deg)}
+.segs i.on{background:var(--bone)}
+
+/* abajo derecha: arma */
+.weapon{right:3em;bottom:2.8em;display:flex;flex-direction:column;align-items:flex-end;gap:.5em}
+.weapon svg{width:19em;height:auto;display:block;filter:drop-shadow(0 .2em .5em rgba(0,0,0,.6))}
+.weapon .line{display:flex;align-items:flex-end;gap:1.4em}
+.weapon .name{display:flex;flex-direction:column;align-items:flex-end;gap:.3em}
+.weapon .name b{font-weight:700;font-size:2.3em;line-height:.9;letter-spacing:.03em}
+.weapon .ammo{font-style:italic;font-weight:800;font-size:5.4em;line-height:.78}
+.weapon .ammo small{font-size:.42em;font-weight:700;color:var(--dim);margin-left:.15em}
+
+/* estado: vida baja */
+.stage[data-state="low"] .vig{background:radial-gradient(ellipse at 50% 55%,transparent 30%,rgba(150,20,10,.55) 100%)}
+.stage[data-state="low"] .health .num,.stage[data-state="low"] .health .lbl{color:var(--blood)}
+.stage[data-state="low"] .segs i.on{background:var(--blood)}
+.stage[data-state="low"] .pop{display:none}
+
+/* ---------- tabla completa (TAB) ---------- */
+.stage.tab canvas{filter:blur(.5cqw) brightness(.5)}
+.full{top:50%;left:50%;transform:translate(-50%,-50%);width:62em;display:flex;flex-direction:column;gap:.9em}
+.full .top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:.15em solid var(--bone);padding-bottom:.7em}
+.full .top b{font-style:italic;font-weight:800;font-size:3.6em;line-height:.8}
+.full .top span{font-weight:600;font-size:1.2em;letter-spacing:.16em;color:var(--dim);text-align:right}
+.tbl{display:flex;flex-direction:column;gap:.2em}
+.tr{display:grid;grid-template-columns:2.2em 1fr 9em 4em 4em 5.5em;gap:1em;align-items:center;padding:.36em 1em;font-weight:600;font-size:1.45em;letter-spacing:.04em;background:var(--shade)}
+.tr > :nth-child(n+4){text-align:right}
+.tr.h{background:none;color:var(--dim);padding-block:0}
+.tr.h span{font-size:.72em;letter-spacing:.18em}
+.tr .n,.tr .w{color:var(--dim)}
+.tr .w{font-weight:500;font-size:.8em;letter-spacing:.1em}
+.tr .p{font-weight:700}
+.tr.me{background:var(--stencil);color:#16180f;text-shadow:none}
+.tr.me .n,.tr.me .w{color:#16180f}
+.full .foot{font-weight:600;font-size:1.05em;letter-spacing:.18em;color:var(--dim);display:flex;justify-content:space-between}
+
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px 28px;border-top:1px solid var(--line);padding-top:22px}
+.notes div{min-width:0}
+.notes h3{font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 4px;color:var(--stencil)}
+.notes p{margin:0;color:var(--dim);font-size:14px;line-height:1.5}
+@media (prefers-reduced-motion:reduce){.stage .vig{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Nexo Deathmatch · mock de HUD</h1>
+    <p>Propuesta de Fable. Cuatro esquinas, centro limpio: vida abajo a la izquierda, arma abajo a la derecha, puntuación arriba a la izquierda y la tabla arriba a la derecha. Los datos son de ejemplo.</p>
+  </header>
+
+  <section class="frame">
+    <div class="frame-head">
+      <h2>En partida</h2>
+      <div class="toggle" role="group" aria-label="Estado del HUD">
+        <button id="st-normal" type="button" aria-pressed="true" data-s="normal">Normal</button>
+        <button id="st-low" type="button" aria-pressed="false" data-s="low">Vida baja</button>
+      </div>
+    </div>
+    <div class="stage" id="game" data-state="normal">
+      <canvas class="scene" width="1600" height="900"></canvas>
+      <div class="vig"></div>
+      <div class="hud">
+        <div class="score">
+          <div class="rank"><small>#</small>2</div>
+          <div class="pts">
+            <span class="lbl">Puntos</span>
+            <b>1.850</b>
+            <span class="kd"><i>14</i> bajas · <i>6</i> muertes · racha <i class="y">×3</i></span>
+          </div>
+        </div>
+
+        <div class="clock">
+          <div class="t">07:42</div>
+          <div class="goal" title="Progreso hacia 30 bajas"><span class="me"></span><span class="lead"></span></div>
+          <div class="map">Puerto de Cherno · a 30 bajas</div>
+        </div>
+
+        <div class="board">
+          <div class="lbl"><span>Clasificación</span><span>Bajas</span></div>
+          <div class="row"><span class="n">1</span><span>Vargash</span><span class="k">16</span></div>
+          <div class="row me"><span class="n">2</span><span>Tú</span><span class="k">14</span></div>
+          <div class="row"><span class="n">3</span><span>Kovacs_77</span><span class="k">13</span></div>
+          <div class="row"><span class="n">4</span><span>LaLoba</span><span class="k">11</span></div>
+          <div class="row"><span class="n">5</span><span>Mirov</span><span class="k">9</span></div>
+        </div>
+        <div class="feed">
+          <div><b class="y">Tú</b> › M4-A1 › <b>Kovacs_77</b></div>
+          <div class="old"><b>Vargash</b> › Mosin › <b>Mirov</b></div>
+        </div>
+
+        <div class="cross"><i></i><i></i><i></i><i></i></div>
+        <div class="pop"><b>+100</b><span>Baja · Kovacs_77</span></div>
+
+        <div class="health">
+          <div class="num" id="hp">76</div>
+          <div class="col">
+            <span class="lbl">Vida</span>
+            <div class="segs" id="segs"></div>
+          </div>
+        </div>
+
+        <div class="weapon">
+          <svg viewBox="0 0 380 110" aria-hidden="true">
+            <g fill="#ece7d6">
+              <polygon points="4,40 78,34 92,34 92,58 70,58 30,72 4,72"/>
+              <rect x="92" y="30" width="118" height="30"/>
+              <polygon points="128,60 156,60 150,104 126,100"/>
+              <polygon points="98,60 118,60 110,92 92,88"/>
+              <rect x="210" y="32" width="92" height="24"/>
+              <rect x="302" y="40" width="62" height="7"/>
+              <rect x="364" y="37" width="14" height="13"/>
+              <rect x="108" y="16" width="70" height="10"/>
+              <rect x="118" y="24" width="8" height="8"/><rect x="160" y="24" width="8" height="8"/>
+              <polygon points="286,32 292,18 298,18 298,32"/>
+            </g>
+          </svg>
+          <div class="line">
+            <div class="name">
+              <span class="lbl"><span class="y">Al azar</span> · preset Asalto</span>
+              <b>M4-A1</b>
+            </div>
+            <div class="ammo">24<small>/ 90</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="frame">
+    <div class="frame-head"><h2>Tabla completa · manteniendo TAB</h2></div>
+    <div class="stage tab">
+      <canvas class="scene" width="1600" height="900"></canvas>
+      <div class="hud">
+        <div class="full">
+          <div class="top">
+            <b>Clasificación</b>
+            <span>Puerto de Cherno · quedan 07:42<br>gana el primero en 30 bajas</span>
+          </div>
+          <div class="tbl" id="tbl">
+            <div class="tr h"><span>#</span><span>Jugador</span><span>Arma</span><span>Bajas</span><span>Muertes</span><span>Puntos</span></div>
+          </div>
+          <div class="foot"><span>10 jugadores</span><span>Suelta TAB para volver</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div><h3>Un solo acento</h3><p>El amarillo marca siempre lo tuyo: tu puesto, tu fila, tus puntos ganados. El rojo solo aparece cuando la vida baja de 25.</p></div>
+    <div><h3>Arma al azar</h3><p>La etiqueta sobre el nombre dice de qué preset salió el arma, para que el sorteo se entienda sin abrir ningún menú.</p></div>
+    <div><h3>Centro limpio</h3><p>Nada fijo cerca de la mira. El aviso de baja aparece debajo un segundo y se va.</p></div>
+    <div><h3>Dos niveles de tabla</h3><p>En partida ves los cinco primeros y tu fila. Con TAB sale la tabla entera con muertes, puntos y arma de cada uno.</p></div>
+  </section>
+</div>
+
+<script>
+// Escena de fondo: bosque con niebla y un bloque soviético al fondo, dibujado con PRNG fijo.
+function drawScene(c){
+  const g=c.getContext('2d'),W=c.width,H=c.height;let s=7;
+  const r=()=>(s=(s*16807)%2147483647)/2147483647;
+  let sky=g.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,'#77837f');sky.addColorStop(.55,'#a9b0a4');sky.addColorStop(1,'#8d9486');
+  g.fillStyle=sky;g.fillRect(0,0,W,H);
+  function pines(base,hMin,hMax,col,step){
+    g.fillStyle=col;
+    for(let x=-40;x<W+40;x+=step*(.5+r())){
+      const h=hMin+r()*(hMax-hMin),w=h*.3;
+      for(let k=0;k<4;k++){const y=base-h+k*h*.2,ww=w*(.35+k*.22);
+        g.beginPath();g.moveTo(x,y);g.lineTo(x+ww,y+h*.36);g.lineTo(x-ww,y+h*.36);g.fill();}
+      g.fillRect(x-w*.07,base-h*.2,w*.14,h*.2);
+    }
+    g.fillRect(0,base-2,W,H-base+2);
+  }
+  function fog(y,a){const f=g.createLinearGradient(0,y-160,0,y+60);
+    f.addColorStop(0,'rgba(176,184,172,0)');f.addColorStop(1,'rgba(176,184,172,'+a+')');
+    g.fillStyle=f;g.fillRect(0,y-160,W,220);}
+  pines(520,120,220,'#7f8a80',34);fog(520,.9);
+  // bloque de pisos y grúa del puerto
+  g.fillStyle='#6f7a72';g.fillRect(1010,300,210,230);g.fillRect(1250,350,120,180);
+  g.fillStyle='#8b958b';for(let y=318;y<510;y+=26)for(let x=1024;x<1210;x+=24)if(r()>.25)g.fillRect(x,y,12,13);
+  g.fillStyle='#6f7a72';g.fillRect(380,250,10,280);g.fillRect(300,262,230,8);g.fillRect(330,270,4,60);
+  fog(540,.85);
+  pines(620,180,330,'#55615a',52);fog(630,.7);
+  pines(740,260,460,'#333d36',90);fog(760,.45);
+  let gr=g.createLinearGradient(0,720,0,H);gr.addColorStop(0,'#2c342c');gr.addColorStop(1,'#151a14');
+  g.fillStyle=gr;g.fillRect(0,735,W,H-735);
+  g.fillStyle='#10140f';
+  for(let x=0;x<W;x+=6){const h=10+r()*38;g.fillRect(x,H-h,2,h);}
+}
+document.querySelectorAll('canvas.scene').forEach(drawScene);
+
+// Vida segmentada y conmutador de estado
+const segs=document.getElementById('segs'),hp=document.getElementById('hp'),game=document.getElementById('game');
+function setHp(v){hp.textContent=v;segs.innerHTML='';
+  for(let i=0;i<10;i++){const e=document.createElement('i');if(i<Math.ceil(v/10))e.className='on';segs.appendChild(e);}}
+setHp(76);
+document.querySelectorAll('.toggle button').forEach(b=>b.addEventListener('click',()=>{
+  const low=b.dataset.s==='low';game.dataset.state=b.dataset.s;setHp(low?18:76);
+  document.querySelectorAll('.toggle button').forEach(o=>o.setAttribute('aria-pressed',o===b));
+}));
+
+// Tabla completa
+const rows=[['Vargash','Mosin 91/30',16,5,2090],['Tú','M4-A1',14,6,1850],['Kovacs_77','AKM',13,8,1640],
+['LaLoba','SVD',11,7,1420],['Mirov','KA-74',9,9,1150],['Draganov','UMP-45',8,10,980],
+['Pecas','BK-18',7,9,860],['Zelenka','M4-A1',6,11,720],['Rubio_ESP','SKS',5,12,610],['NocheCerrada','Vaiga',3,13,340]];
+const tbl=document.getElementById('tbl');
+rows.forEach((r,i)=>{const d=document.createElement('div');d.className='tr'+(r[0]==='Tú'?' me':'');
+  d.innerHTML=`<span class="n">${i+1}</span><span>${r[0]}</span><span class="w">${r[1]}</span><span>${r[2]}</span><span>${r[3]}</span><span class="p">${String(r[4]).replace(/\B(?=(\d{3})+$)/g,'.')}</span>`;
+  tbl.appendChild(d);});
+</script>
+
+</body></html>

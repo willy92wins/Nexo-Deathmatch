@@ -4,11 +4,17 @@
         <actions>
             <!-- Scoreboard del GunGame. Toggle. Configurable en el menú de controles. -->
             <input name="UANexoDMScoreboard" loc="GunGame Scoreboard"/>
+            <!-- Top 5 del HUD. Solo mientras se mantiene pulsada. Configurable en el menú de controles.
+                 NOTA: LBmaster Groups usa kT para su ping táctico; posible conflicto conocido, no se cambia aquí. -->
+            <input name="UANexoDMTop5" loc="NexoDM Top 5"/>
         </actions>
     </inputs>
     <preset>
         <input name="UANexoDMScoreboard">
             <btn name="kL"/>
+        </input>
+        <input name="UANexoDMTop5">
+            <btn name="kT"/>
         </input>
     </preset>
 </modded_inputs>

@@ -59,6 +59,14 @@ class NexoDM_RoundManager : Managed
     protected int m_ActiveMapIndex;
     protected int m_PreviousMapIndex;
     protected bool m_FreezeActive;
+    protected int m_RoundEndsAtMs;
+    protected int m_HudTop5LastSendMs;
+    protected int m_HudTop5Count;
+    protected bool m_HudTop5Pending;
+    protected ref array<string> m_HudTop5Ids;
+    protected ref array<int> m_HudTop5Points;
+    protected ref array<int> m_HudTop5Kills;
+    protected ref array<int> m_HudTop5Deaths;
 
     void NexoDM_RoundManager()
     {
@@ -75,6 +83,14 @@ class NexoDM_RoundManager : Managed
         m_ActiveMapIndex = 0;
         m_PreviousMapIndex = -1;
         m_FreezeActive = false;
+        m_RoundEndsAtMs = 0;
+        m_HudTop5LastSendMs = 0;
+        m_HudTop5Count = -1;
+        m_HudTop5Pending = false;
+        m_HudTop5Ids = new array<string>;
+        m_HudTop5Points = new array<int>;
+        m_HudTop5Kills = new array<int>;
+        m_HudTop5Deaths = new array<int>;
 #endif
     }
 
@@ -230,6 +246,11 @@ class NexoDM_RoundManager : Managed
             // Winner announce must run while entries still exist; ReturnToIdle
             // clears them 0.1s after ScheduleIdleReset below.
             AnnounceWinner(reason, winnerSteamId);
+            // Drop the deferred flush before sending the final table, so it cannot fire in the next round.
+            CancelHudTop5Flush();
+            FlushHudTop5();
+            // Round is already ENDED: remaining 0, active no. Participants still have their role.
+            BroadcastHudRound();
         }
 
         // #6: strip weapons/mags/ammo from every connected participant now, so
@@ -306,7 +327,13 @@ class NexoDM_RoundManager : Managed
             return false;
         if (e.steamId == string.Empty)
             return false;
-        return FindPlayerBySteamId(e.steamId) != null;
+        PlayerBase online = FindPlayerBySteamId(e.steamId);
+        if (!online)
+            return false;
+        // R2: PlayerBase.IsPlayerDisconnected() in scripts/4_world/entities/manbase/playerbase.c:2638.
+        if (online.IsPlayerDisconnected())
+            return false;
+        return true;
 #else
         return false;
 #endif
@@ -450,6 +477,27 @@ class NexoDM_RoundManager : Managed
         float roundSeconds = roundDuration;
         string timeoutCallback = "OnRoundTimeout";
         m_RoundTimer.Run(roundSeconds, this, timeoutCallback, NULL, false);
+        int nowMs = 0;
+        if (GetGame())
+            nowMs = GetGame().GetTime();
+        m_RoundEndsAtMs = nowMs + (roundDuration * 1000);
+        CancelHudTop5Flush();
+        m_HudTop5Count = -1;
+        m_HudTop5LastSendMs = nowMs - 1000;
+
+        int hudIndex = 0;
+        for (hudIndex = 0; hudIndex < m_PlayerEntries.Count(); hudIndex = hudIndex + 1)
+        {
+            NexoDM_PlayerEntry hudEntry = m_PlayerEntries.GetElement(hudIndex);
+            if (!hudEntry || hudEntry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            PlayerBase hudPlayer = FindPlayerBySteamId(hudEntry.steamId);
+            if (!hudPlayer || !hudPlayer.IsAlive())
+                continue;
+            hudPlayer.NexoDM_ResetVitalsSent();
+            SendHudJoinState(hudPlayer, hudEntry);
+        }
+        BroadcastHudSelf();
 #endif
     }
 
@@ -667,6 +715,8 @@ class NexoDM_RoundManager : Managed
         // null/self -> 0,0 on the wire). Skipped on the round-ending kill: no respawn follows.
         if (!roundEndsByKills)
             SendKillerCam(victim, creditedKiller);
+
+        PublishKillHud(victim, victimEntry, creditedKiller, killerId, killer);
 
         // S5.5 KB1-A: consume-once - evita un credito stale entre kill y respawn (P2-2).
         victimEntry.lastDamageWasKnife = false;
@@ -977,6 +1027,8 @@ class NexoDM_RoundManager : Managed
 
         // F3 p8: a fresh character born during the freeze window stays frozen until EndFreeze.
         ApplyFreezeToPlayer(player);
+        player.NexoDM_ResetVitalsSent();
+        SendHudJoinState(player, entry);
 
         string respawnDetail = "participant respawn equipped";
         LogRule(NexoDM_Constants.RULE_RESPAWN_EQUIPPED, respawnDetail);
@@ -1179,7 +1231,12 @@ class NexoDM_RoundManager : Managed
             ApplyRoleToPlayer(player, activeEntry.role);
             // F3 p8: late join during the freeze window freezes like everyone else.
             if (activeEntry.role == NexoDM_Role.PARTICIPANT)
+            {
                 ApplyFreezeToPlayer(player);
+                player.NexoDM_ResetVitalsSent();
+                SendHudJoinState(player, activeEntry);
+                BroadcastHudSelf();
+            }
         }
 #endif
     }
@@ -1232,6 +1289,9 @@ class NexoDM_RoundManager : Managed
                 }
                 // F3 p8: reconnect during the freeze window freezes like everyone else.
                 ApplyFreezeToPlayer(player);
+                player.NexoDM_ResetVitalsSent();
+                SendHudJoinState(player, entry);
+                BroadcastHudSelf();
             }
             return;
         }
@@ -1250,6 +1310,9 @@ class NexoDM_RoundManager : Managed
             ApplyRoleToPlayer(player, entry.role);
             // F3 p8: new participant via reconnect during the freeze window freezes too.
             ApplyFreezeToPlayer(player);
+            player.NexoDM_ResetVitalsSent();
+            SendHudJoinState(player, entry);
+            BroadcastHudSelf();
             return;
         }
 
@@ -2449,6 +2512,443 @@ class NexoDM_RoundManager : Managed
         // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
         rpc.Send(victim, NexoDM_RPC.KILLER_CAM, true, victimIdentity);
 #endif
+    }
+
+    protected void SendHudJoinState(PlayerBase player, NexoDM_PlayerEntry entry)
+    {
+#ifdef SERVER
+        if (!player || !entry)
+            return;
+        SendHudRoundTo(player);
+        SendHudSelf(player, entry);
+        SendHudTop5To(player);
+        RequestHudTop5();
+#endif
+    }
+
+    protected int HudRoundSecondsLeft()
+    {
+#ifdef SERVER
+        if (m_State != NexoDM_State.ACTIVE)
+            return 0;
+        DayZGame game = GetGame();
+        if (!game)
+            return 0;
+        int leftMs = m_RoundEndsAtMs - game.GetTime();
+        if (leftMs <= 0)
+            return 0;
+        return leftMs / 1000;
+#else
+        return 0;
+#endif
+    }
+
+    protected int HudKillsToWin()
+    {
+#ifdef SERVER
+        if (!m_Config)
+            return 0;
+        return m_Config.GetKillsToWin();
+#else
+        return 0;
+#endif
+    }
+
+    protected void SendHudRoundTo(PlayerBase player)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+        PlayerIdentity identity = player.GetIdentity();
+        if (!identity)
+            return;
+
+        int activeFlag = 0;
+        if (m_State == NexoDM_State.ACTIVE)
+            activeFlag = 1;
+        Param3<int, int, int> payload = new Param3<int, int, int>(HudRoundSecondsLeft(), HudKillsToWin(), activeFlag);
+        ScriptRPC rpc = new ScriptRPC();
+        // R2: Serializer.Write(void) in scripts/1_core/proto/serializer.c:57.
+        rpc.Write(payload);
+        // R2: ScriptRPC.Send(Object,int,bool,PlayerIdentity) in scripts/3_game/gameplay.c:117.
+        rpc.Send(player, NexoDM_RPC.HUD_ROUND, true, identity);
+#endif
+    }
+
+    protected void BroadcastHudRound()
+    {
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            SendHudRoundTo(FindPlayerBySteamId(entry.steamId));
+        }
+#endif
+    }
+
+    protected void SendHudSelf(PlayerBase player, NexoDM_PlayerEntry entry)
+    {
+#ifdef SERVER
+        if (!player || !entry)
+            return;
+        PlayerIdentity identity = player.GetIdentity();
+        if (!identity)
+            return;
+
+        array<NexoDM_PlayerEntry> ranked = CollectRankedParticipants();
+        int rank = 0;
+        int index = 0;
+        for (index = 0; index < ranked.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry row = ranked.Get(index);
+            if (row && row.steamId == entry.steamId)
+            {
+                rank = index + 1;
+                break;
+            }
+        }
+
+        Param4<int, int, int, int> payload = new Param4<int, int, int, int>(entry.points, entry.kills, entry.deaths, rank);
+        ScriptRPC rpc = new ScriptRPC();
+        rpc.Write(payload);
+        rpc.Send(player, NexoDM_RPC.HUD_SELF, true, identity);
+#endif
+    }
+
+    void OnParticipantDisconnected(string steamId)
+    {
+#ifdef SERVER
+        if (!CanMutateState())
+            return;
+        if (m_State != NexoDM_State.ACTIVE)
+            return;
+        if (steamId == string.Empty)
+            return;
+
+        NexoDM_PlayerEntry entry = GetEntry(steamId);
+        if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+            return;
+
+        // IsEntryOnline now skips IsPlayerDisconnected, so top 5 and ranks drop this player.
+        RequestHudTop5();
+        BroadcastHudSelf();
+#endif
+    }
+
+    protected void CancelHudTop5Flush()
+    {
+#ifdef SERVER
+        m_HudTop5Pending = false;
+        DayZGame game = GetGame();
+        if (!game)
+            return;
+        // R2: ScriptCallQueue.Remove(func) in scripts/2_gamelib/tools.c:65.
+        game.GetCallQueue(CALL_CATEGORY_GAMEPLAY).Remove(FlushHudTop5);
+#endif
+    }
+
+    protected void BroadcastHudSelf()
+    {
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            if (!IsEntryOnline(entry))
+                continue;
+            SendHudSelf(FindPlayerBySteamId(entry.steamId), entry);
+        }
+#endif
+    }
+
+    protected void PublishKillHud(PlayerBase victim, NexoDM_PlayerEntry victimEntry, PlayerBase creditedKiller, string killerId, Object killerObject)
+    {
+#ifdef SERVER
+        if (!victimEntry)
+            return;
+
+        string killerName = string.Empty;
+        if (creditedKiller)
+        {
+            PlayerIdentity killerIdentity = creditedKiller.GetIdentity();
+            if (killerIdentity)
+                killerName = killerIdentity.GetName();
+        }
+
+        string victimName = string.Empty;
+        if (victim)
+        {
+            PlayerIdentity victimIdentity = victim.GetIdentity();
+            if (victimIdentity)
+                victimName = victimIdentity.GetName();
+        }
+
+        string weaponClass = HudWeaponClass(killerObject, creditedKiller, victimEntry);
+        BroadcastHudKill(killerName, victimName, weaponClass);
+        // Points changed: every participant's rank may have moved.
+        BroadcastHudSelf();
+        RequestHudTop5();
+#endif
+    }
+
+    protected string HudWeaponClass(Object killerObject, PlayerBase creditedKiller, NexoDM_PlayerEntry victimEntry)
+    {
+#ifdef SERVER
+        if (victimEntry && victimEntry.lastDamageWasKnife && m_Config)
+        {
+            string knife = m_Config.GetKnife();
+            if (knife != string.Empty)
+                return knife;
+        }
+
+        EntityAI entity = EntityAI.Cast(killerObject);
+        if (entity && !PlayerBase.Cast(entity))
+        {
+            // R2: Object.GetType() in scripts/3_game/entities/object.c:467.
+            string typed = entity.GetType();
+            if (typed != string.Empty)
+                return typed;
+        }
+
+        if (creditedKiller)
+        {
+            // R2: Man.GetEntityInHands() in scripts/3_game/entities/man.c:81.
+            EntityAI inHands = creditedKiller.GetEntityInHands();
+            if (inHands)
+                return inHands.GetType();
+        }
+#endif
+        return string.Empty;
+    }
+
+    protected void BroadcastHudKill(string killerName, string victimName, string weaponClass)
+    {
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            PlayerBase player = FindPlayerBySteamId(entry.steamId);
+            if (!player)
+                continue;
+            PlayerIdentity identity = player.GetIdentity();
+            if (!identity)
+                continue;
+            ScriptRPC rpc = new ScriptRPC();
+            rpc.Write(killerName);
+            rpc.Write(victimName);
+            rpc.Write(weaponClass);
+            rpc.Send(player, NexoDM_RPC.HUD_KILL, true, identity);
+        }
+#endif
+    }
+
+    protected void RequestHudTop5()
+    {
+#ifdef SERVER
+        array<NexoDM_PlayerEntry> ranked = CollectRankedParticipants();
+        int rowCount = ranked.Count();
+        if (rowCount > 5)
+            rowCount = 5;
+        if (HudTop5Unchanged(ranked, rowCount))
+            return;
+
+        DayZGame game = GetGame();
+        int nowMs = 0;
+        if (game)
+            nowMs = game.GetTime();
+        if (nowMs - m_HudTop5LastSendMs >= 1000)
+        {
+            BroadcastHudTop5();
+            return;
+        }
+
+        if (m_HudTop5Pending)
+            return;
+        m_HudTop5Pending = true;
+        int waitMs = 1000 - (nowMs - m_HudTop5LastSendMs);
+        if (waitMs < 1)
+            waitMs = 1;
+        if (!game)
+            return;
+        // R2: ScriptCallQueue.CallLater(func,int,bool,...) in scripts/2_gamelib/tools.c:46.
+        game.GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(FlushHudTop5, waitMs, false);
+#endif
+    }
+
+    void FlushHudTop5()
+    {
+#ifdef SERVER
+        m_HudTop5Pending = false;
+        if (m_State != NexoDM_State.ACTIVE && m_State != NexoDM_State.ENDED)
+            return;
+        BroadcastHudTop5();
+#endif
+    }
+
+    protected void BroadcastHudTop5()
+    {
+#ifdef SERVER
+        array<NexoDM_PlayerEntry> ranked = CollectRankedParticipants();
+        int rowCount = ranked.Count();
+        if (rowCount > 5)
+            rowCount = 5;
+        if (HudTop5Unchanged(ranked, rowCount))
+            return;
+
+        RememberHudTop5(ranked, rowCount);
+        DayZGame game = GetGame();
+        if (game)
+            m_HudTop5LastSendMs = game.GetTime();
+
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = m_PlayerEntries.GetElement(index);
+            if (!entry || entry.role != NexoDM_Role.PARTICIPANT)
+                continue;
+            SendHudTop5To(FindPlayerBySteamId(entry.steamId));
+        }
+#endif
+    }
+
+    protected void SendHudTop5To(PlayerBase player)
+    {
+#ifdef SERVER
+        if (!player)
+            return;
+        PlayerIdentity identity = player.GetIdentity();
+        if (!identity)
+            return;
+
+        array<NexoDM_PlayerEntry> ranked = CollectRankedParticipants();
+        int rowCount = ranked.Count();
+        if (rowCount > 5)
+            rowCount = 5;
+
+        ScriptRPC rpc = new ScriptRPC();
+        rpc.Write(rowCount);
+        int index = 0;
+        for (index = 0; index < rowCount; index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = ranked.Get(index);
+            string name = string.Empty;
+            int points = 0;
+            int kills = 0;
+            int deaths = 0;
+            if (entry)
+            {
+                name = GetPlayerName(entry.steamId);
+                points = entry.points;
+                kills = entry.kills;
+                deaths = entry.deaths;
+            }
+            rpc.Write(name);
+            rpc.Write(points);
+            rpc.Write(kills);
+            rpc.Write(deaths);
+        }
+        rpc.Send(player, NexoDM_RPC.HUD_TOP5, true, identity);
+#endif
+    }
+
+    protected bool HudTop5Unchanged(array<NexoDM_PlayerEntry> ranked, int rowCount)
+    {
+        if (m_HudTop5Count < 0)
+            return false;
+        if (m_HudTop5Count != rowCount)
+            return false;
+        int index = 0;
+        for (index = 0; index < rowCount; index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = ranked.Get(index);
+            if (!entry)
+                return false;
+            if (m_HudTop5Ids.Get(index) != entry.steamId)
+                return false;
+            if (m_HudTop5Points.Get(index) != entry.points)
+                return false;
+            if (m_HudTop5Kills.Get(index) != entry.kills)
+                return false;
+            if (m_HudTop5Deaths.Get(index) != entry.deaths)
+                return false;
+        }
+        return true;
+    }
+
+    protected void RememberHudTop5(array<NexoDM_PlayerEntry> ranked, int rowCount)
+    {
+        m_HudTop5Count = rowCount;
+        m_HudTop5Ids.Clear();
+        m_HudTop5Points.Clear();
+        m_HudTop5Kills.Clear();
+        m_HudTop5Deaths.Clear();
+        int index = 0;
+        for (index = 0; index < rowCount; index = index + 1)
+        {
+            NexoDM_PlayerEntry entry = ranked.Get(index);
+            string steamId = string.Empty;
+            int points = 0;
+            int kills = 0;
+            int deaths = 0;
+            if (entry)
+            {
+                steamId = entry.steamId;
+                points = entry.points;
+                kills = entry.kills;
+                deaths = entry.deaths;
+            }
+            m_HudTop5Ids.Insert(steamId);
+            m_HudTop5Points.Insert(points);
+            m_HudTop5Kills.Insert(kills);
+            m_HudTop5Deaths.Insert(deaths);
+        }
+    }
+
+    // Same order as OnScoreboardRequest: online participants, IsBetterByTiebreak, best first.
+    protected array<NexoDM_PlayerEntry> CollectRankedParticipants()
+    {
+        array<NexoDM_PlayerEntry> ranked = new array<NexoDM_PlayerEntry>;
+#ifdef SERVER
+        EnsureCollections();
+        int index = 0;
+        for (index = 0; index < m_PlayerEntries.Count(); index = index + 1)
+        {
+            NexoDM_PlayerEntry counted = m_PlayerEntries.GetElement(index);
+            if (counted && counted.role == NexoDM_Role.PARTICIPANT && IsEntryOnline(counted))
+                ranked.Insert(counted);
+        }
+
+        int a = 0;
+        int b = 0;
+        for (a = 0; a < ranked.Count(); a = a + 1)
+        {
+            int best = a;
+            for (b = a + 1; b < ranked.Count(); b = b + 1)
+            {
+                if (IsBetterByTiebreak(ranked.Get(b), ranked.Get(best)))
+                    best = b;
+            }
+            if (best != a)
+            {
+                NexoDM_PlayerEntry swap = ranked.Get(a);
+                ranked.Set(a, ranked.Get(best));
+                ranked.Set(best, swap);
+            }
+        }
+#endif
+        return ranked;
     }
 
     protected bool IsBetterByTiebreak(NexoDM_PlayerEntry candidate, NexoDM_PlayerEntry current)
