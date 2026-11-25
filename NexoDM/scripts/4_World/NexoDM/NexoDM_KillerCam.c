@@ -66,7 +66,7 @@ class NexoDM_KillerCam : Managed
         DayZGame gameStart = GetGame();
         if (gameStart)
         {
-            // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
+            // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:944.
             m_CorpsePlayer = PlayerBase.Cast(gameStart.GetPlayer());
         }
 
@@ -135,9 +135,11 @@ class NexoDM_KillerCam : Managed
             return;
         }
 
-        // #3: abort (no respawn) if the local player is no longer this camera's corpse,
-        // is alive again, or a (manual) respawn is already in progress.
-        if (!IsStillLocalCorpse(game))
+        // Correccion 3 (P1 nuevo 1/2): abort (no respawn) only if the local player
+        // became a DIFFERENT non-null object, or a (manual) respawn is in progress.
+        // Same object still alive (death not yet replicated) and GetPlayer()==null
+        // (corpse deleted at 10s) both keep the camera running.
+        if (ShouldAbortCamera(game))
         {
             Abort();
             return;
@@ -166,12 +168,13 @@ class NexoDM_KillerCam : Managed
 #endif
     }
 
-    // #3/#4: called by NexoDM_MissionGameplay (5_Mission) every frame after OnUpdate.
-    // Returns true exactly once, only when the local player is still this corpse, dead,
-    // not already respawning, and the engine says it can respawn. Aborts the pending
-    // respawn (returns false forever after) if the local player changed / is alive /
-    // a respawn is already in progress; waits (returns false, stays pending) while
-    // CanRespawnPlayer() is false.
+    // #3/#4 + Correccion 3: called by NexoDM_MissionGameplay (5_Mission) every frame
+    // after OnUpdate. Returns true exactly once when the respawn may fire. Aborts the
+    // pending respawn (returns false forever after) only if the local player became a
+    // DIFFERENT non-null object or a respawn is already in progress. Waits (returns
+    // false, stays pending) while the same corpse object is still alive (death not yet
+    // replicated: Object.IsAlive() in scripts/3_game/entities/object.c:517-520) or
+    // CanRespawnPlayer() is false. GetPlayer()==null (corpse deleted) respawns anyway.
     bool ConsumeRespawnIfReady()
     {
 #ifndef SERVER
@@ -182,9 +185,9 @@ class NexoDM_KillerCam : Managed
         if (!game)
             return false;
 
-        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
+        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:944.
         PlayerBase localPlayer = PlayerBase.Cast(game.GetPlayer());
-        if (!localPlayer || localPlayer != m_CorpsePlayer)
+        if (localPlayer && localPlayer != m_CorpsePlayer)
         {
             m_PendingRespawn = false;
             m_CorpsePlayer = null;
@@ -201,12 +204,18 @@ class NexoDM_KillerCam : Managed
             return false;
         }
 
-        // R2: PlayerBase.CheckDeath uses !IsAlive() in scripts/4_world/entities/manbase/playerbase.c:7306.
-        if (localPlayer.IsAlive())
+        if (!localPlayer)
         {
+            // Corpse object deleted (server cleanup at 10s): not another player.
             m_PendingRespawn = false;
-            return false;
+            return true;
         }
+
+        // R2: Object.IsAlive() in scripts/3_game/entities/object.c:517-520;
+        // PlayerBase.CheckDeath uses !IsAlive() in scripts/4_world/entities/manbase/playerbase.c:7306.
+        // Still alive on this same object = death not replicated yet: wait, do not cancel.
+        if (localPlayer.IsAlive())
+            return false;
 
         // R2: CGame.CanRespawnPlayer() in scripts/3_game/global/game.c:1108.
         if (!game.CanRespawnPlayer())
@@ -219,24 +228,23 @@ class NexoDM_KillerCam : Managed
 #endif
     }
 
-    protected bool IsStillLocalCorpse(DayZGame game)
+    // Correccion 3: true only for a DIFFERENT non-null local player or a respawn
+    // already in progress. Null (deleted corpse) and same-object-still-alive wait.
+    protected bool ShouldAbortCamera(DayZGame game)
     {
 #ifndef SERVER
         if (!game)
             return false;
-        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
+        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:944.
         PlayerBase localPlayer = PlayerBase.Cast(game.GetPlayer());
-        if (!localPlayer || localPlayer != m_CorpsePlayer)
-            return false;
+        if (localPlayer && localPlayer != m_CorpsePlayer)
+            return true;
         // R2: CGame.GetMission() in scripts/3_game/global/game.c:1093;
         // Mission.IsPlayerRespawning() in scripts/3_game/gameplay.c:827.
         Mission mission = game.GetMission();
         if (mission && mission.IsPlayerRespawning())
-            return false;
-        // R2: !IsAlive() check in scripts/4_world/entities/manbase/playerbase.c:7306.
-        if (localPlayer.IsAlive())
-            return false;
-        return true;
+            return true;
+        return false;
 #else
         return false;
 #endif
@@ -291,11 +299,22 @@ class NexoDM_KillerCam : Managed
     protected void ClearDeadScreen()
     {
 #ifndef SERVER
+        // Correccion 3 (P1 #2 resto): death while unconscious leaves the uncon vignette
+        // running (OnUnconsciousUpdate Start in scripts/4_world/entities/manbase/playerbase.c:3906-3908;
+        // OnUnconsciousStop skips it on COMMANDID_DEATH in playerbase.c:3830-3834), so stop
+        // it while the camera is active, even if GetPlayer() is already null.
+        // R2: PPERequesterBank.GetRequester(typename) in scripts/3_game/ppemanager/pperequesterbank.c:78;
+        // PPERequester_UnconEffects in scripts/3_game/ppemanager/requesters/pperunconeffects.c:1;
+        // PPERequesterBase.Stop(Param) in scripts/3_game/ppemanager/requesters/pperequestplatformsbase.c:44.
+        PPERequester_UnconEffects unconRequester = PPERequester_UnconEffects.Cast(PPERequesterBank.GetRequester(PPERequester_UnconEffects));
+        if (unconRequester)
+            unconRequester.Stop();
+
         DayZGame game = GetGame();
         if (!game)
             return;
 
-        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
+        // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:944.
         PlayerBase player = PlayerBase.Cast(game.GetPlayer());
         if (!player)
             return;
