@@ -1,7 +1,7 @@
 """Classify ui_reconcile findings: concatenated names (all indices exist), vanilla HUD widgets, or really missing."""
 import re, subprocess, sys, pathlib
-REPO = pathlib.Path(r"C:\Users\guill\Repos\Nexo-Deathmatch")
-UI = r"C:\Users\guill\DayZ-Modding-Knowledge-Pack\tools\dayz-script-validator\scripts\ui_reconcile.py"
+REPO = pathlib.Path(__file__).resolve().parents[2]
+UI = str(pathlib.Path.home() / "DayZ-Modding-Knowledge-Pack" / "tools" / "dayz-script-validator" / "scripts" / "ui_reconcile.py")
 p = subprocess.run([sys.executable, UI, str(REPO / "NexoDM")], capture_output=True, text=True, encoding="utf-8", errors="replace")
 mod_layouts = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in (REPO / "NexoDM/gui/layouts").glob("*.layout"))
 van = pathlib.Path(r"P:\gui\layouts\day_z_hud.layout").read_text(encoding="utf-8", errors="replace")

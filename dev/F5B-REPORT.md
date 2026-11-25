@@ -4,14 +4,14 @@ Hecho en código. No compilado y no probado in-game (esta sesión no usa shell n
 
 ## 1. Salud, sangre, agua y comida (% bajo el icono vanilla)
 
-- El HUD vanilla no se toca. Grupo propio `VitalsGroup` en [nexodm_hud.layout](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/gui/layouts/nexodm_hud.layout) que replica la geometría de `NotifiersPanel` (`P:\gui\layouts\day_z_hud.layout:754-766`: 260×81, `halign right_ref`, `valign bottom_ref`, exact 1) para caer sobre los iconos sin entrar en el panel que recorta (`clipchildren 1`).
-- Desplazamientos desde la derecha copiados de vanilla: Salud 0 (`Health`, `day_z_hud.layout:768`), Sangre 43 (`Blood`, `:938-941`), Comida 139 (`Hungry`, `:1387-1390`), Agua 182 (`Thirsty`, `:1553-1556`). Cada `%` (`HealthPct`/`BloodPct`/`FoodPct`/`WaterPct`, 35×14 en y=59, justo bajo el icono de 35×35 centrado) lo pinta `UpdateVitals`/`SetPct` en [NexoDM_HUD.c](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_HUD.c) desde `NexoDM_HudData.GetHealthPercent/GetBloodPercent/GetWaterPercent/GetFoodPercent`.
+- El HUD vanilla no se toca. Grupo propio `VitalsGroup` en [nexodm_hud.layout](../NexoDM/gui/layouts/nexodm_hud.layout) que replica la geometría de `NotifiersPanel` (`P:\gui\layouts\day_z_hud.layout:754-766`: 260×81, `halign right_ref`, `valign bottom_ref`, exact 1) para caer sobre los iconos sin entrar en el panel que recorta (`clipchildren 1`).
+- Desplazamientos desde la derecha copiados de vanilla: Salud 0 (`Health`, `day_z_hud.layout:768`), Sangre 43 (`Blood`, `:938-941`), Comida 139 (`Hungry`, `:1387-1390`), Agua 182 (`Thirsty`, `:1553-1556`). Cada `%` (`HealthPct`/`BloodPct`/`FoodPct`/`WaterPct`, 35×14 en y=59, justo bajo el icono de 35×35 centrado) lo pinta `UpdateVitals`/`SetPct` en [NexoDM_HUD.c](../NexoDM/scripts/4_World/NexoDM/NexoDM_HUD.c) desde `NexoDM_HudData.GetHealthPercent/GetBloodPercent/GetWaterPercent/GetFoodPercent`.
 - Color del % por umbrales (mock): blanco 220,220,220, aviso 220,220,0 (<50), crítico 220,0,0 (<25).
 - Tendencia: F5a no envía tendencia, así que la flecha (`HealthTrendUp/Down` y equivalentes, `set:dayz_gui image:iconArrowUp1/iconArrowDown1` como `HealthArrowUp1` en `day_z_hud.layout:849-868`) se deriva en cliente comparando cada muestra con la anterior (`SetTrend`); queda debajo del % (y=74). Las flechas vanilla dentro de `NotifiersPanel` siguen donde vanilla las pone: no se duplican ni se mueven (ver «no reproducido»).
 
 ## 2. Arma actual abajo a la izquierda
 
-- `WeaponGroup` (0.05, 0.80) en [nexodm_hud.layout](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/gui/layouts/nexodm_hud.layout), encima de postura/aguante vanilla. `UpdateWeapon` en [NexoDM_HUD.c](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_HUD.c): `player.GetEntityInHands()` casteado a `Weapon_Base`; si no es arma, grupo oculto.
+- `WeaponGroup` (0.05, 0.80) en [nexodm_hud.layout](../NexoDM/gui/layouts/nexodm_hud.layout), encima de postura/aguante vanilla. `UpdateWeapon` en [NexoDM_HUD.c](../NexoDM/scripts/4_World/NexoDM/NexoDM_HUD.c): `player.GetEntityInHands()` casteado a `Weapon_Base`; si no es arma, grupo oculto.
 - Render real: `WeaponPreview` (`ItemPreviewWidgetClass`) con `SetItem(weapon)` solo al cambiar de objeto en manos (`P:\scripts\3_game\gameplay.c:286-300`). Nombre: `weapon.GetDisplayName()` (`P:\scripts\3_game\entities\object.c:476`).
 - Munición como en el mock (actual / máximo + barra): cargador interno con `GetTotalCartridgeCount/GetTotalMaxCartridgeCount` (`P:\scripts\4_world\entities\core\inherited\weapon.c:127-132`); con cargador separable, `GetMagazine(muzzle)` (`weapon.c:240`) + `Magazine.GetAmmoCount()` (`P:\scripts\4_world\entities\itembase\magazine\magazine.c:68`) + 1 si hay bala en recámara (`IsChamberEmpty`, `weapon.c:74`), máximo desde `CfgMagazines <clase> count`. Sin cargador, solo recámara. Etiqueta localizada `#STR_NEXODM_HUD_MAGAZINE`.
 
@@ -27,8 +27,8 @@ Hecho en código. No compilado y no probado in-game (esta sesión no usa shell n
 
 ## 5. Top 5 con tecla mantenida
 
-- Input nuevo `UANexoDMTop5` con `kT` por defecto en [inputs.xml](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/inputs.xml) (reasignable en Controles). Anotado en el propio XML: LBmaster Groups usa kT para su ping táctico; conflicto conocido, no se cambia.
-- Poll por frame en 5_Mission: `NexoDM_UpdateTop5Hold` en [NexoDM_MissionGameplay.c](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/5_Mission/NexoDM/NexoDM_MissionGameplay.c) usa `UAInput.LocalHold()` (`P:\scripts\3_game\inputapi\uainput.c:62`) y pasa el estado a `NexoDM_HUD.SetTop5Visible`; el HUD (4_World) solo muestra `TopGroup` mientras dura la pulsación. El scoreboard con L no se toca.
+- Input nuevo `UANexoDMTop5` con `kT` por defecto en [inputs.xml](../NexoDM/inputs.xml) (reasignable en Controles). Anotado en el propio XML: LBmaster Groups usa kT para su ping táctico; conflicto conocido, no se cambia.
+- Poll por frame en 5_Mission: `NexoDM_UpdateTop5Hold` en [NexoDM_MissionGameplay.c](../NexoDM/scripts/5_Mission/NexoDM/NexoDM_MissionGameplay.c) usa `UAInput.LocalHold()` (`P:\scripts\3_game\inputapi\uainput.c:62`) y pasa el estado a `NexoDM_HUD.SetTop5Visible`; el HUD (4_World) solo muestra `TopGroup` mientras dura la pulsación. El scoreboard con L no se toca.
 - Filas fijas `TopRow0..4` (puesto, nombre, bajas, muertes, puntos de `HUD_TOP5`). Tu fila: fondo negro y texto rojo si tu nombre de identidad coincide con el de la fila (respaldo: tu `GetRank()` cuando no hay nombre local).
 
 ## 6. Estilo de cajas (menú de escape vanilla)
@@ -47,7 +47,7 @@ Sin bordes, sin degradados ni esquinas redondeadas: paneles planos `ImageWidgetC
 
 ## 7. Visibilidad
 
-- Gate único `CanShowF5b` en [NexoDM_HUD.c](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_HUD.c), evaluado en cada refresco (0,25 s): cliente no dedicado, `NexoDM_HudData.IsRoundActive()`, jugador local con `m_GG_Role == NexoDM_Role.PARTICIPANT`, sin menú abierto (`UIManager.GetMenu()`, `P:\scripts\3_game\tools\uimanager.c:59` — cubre pausa e inventario, y también el scoreboard) y sin cámara del asesino activa (`NexoDM_KillerCam.IsActive()`). Si el gate cae, `HideF5bGroups` oculta los seis grupos; la cuenta atrás conserva su comportamiento (oculta el HUD vanilla durante el freeze, como antes).
+- Gate único `CanShowF5b` en [NexoDM_HUD.c](../NexoDM/scripts/4_World/NexoDM/NexoDM_HUD.c), evaluado en cada refresco (0,25 s): cliente no dedicado, `NexoDM_HudData.IsRoundActive()`, jugador local con `m_GG_Role == NexoDM_Role.PARTICIPANT`, sin menú abierto (`UIManager.GetMenu()`, `P:\scripts\3_game\tools\uimanager.c:59` — cubre pausa e inventario, y también el scoreboard) y sin cámara del asesino activa (`NexoDM_KillerCam.IsActive()`). Si el gate cae, `HideF5bGroups` oculta los seis grupos; la cuenta atrás conserva su comportamiento (oculta el HUD vanilla durante el freeze, como antes).
 - Los mocks no dicen nada de la cámara del asesino: se oculta igual porque el jugador local está muerto viendo a otro; al terminar, el gate vuelve solo.
 
 ## Qué del mock no se pudo reproducir y por qué
@@ -69,7 +69,7 @@ Sin bordes, sin degradados ni esquinas redondeadas: paneles planos `ImageWidgetC
 
 ## Corrección 1
 
-Corrección de la revisión F5 ronda 1, solo en [nexodm_hud.layout](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/gui/layouts/nexodm_hud.layout), [NexoDM_HUD.c](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_HUD.c) y [NexoDM_MissionGameplay.c](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/5_Mission/NexoDM/NexoDM_MissionGameplay.c). Sin tocar datos ni RPC (la parte de datos la corrige otro implementador en paralelo). No compilado ni probado in-game (sin shell en esta sesión).
+Corrección de la revisión F5 ronda 1, solo en [nexodm_hud.layout](../NexoDM/gui/layouts/nexodm_hud.layout), [NexoDM_HUD.c](../NexoDM/scripts/4_World/NexoDM/NexoDM_HUD.c) y [NexoDM_MissionGameplay.c](../NexoDM/scripts/5_Mission/NexoDM/NexoDM_MissionGameplay.c). Sin tocar datos ni RPC (la parte de datos la corrige otro implementador en paralelo). No compilado ni probado in-game (sin shell en esta sesión).
 
 - **#1 Flechas vanilla:** las ocho flechas (`Health/Blood/Food/WaterTrendUp/Down`) usan `image0 "set:dayz_gui image:iconArrowUp1"`; subida con `"flip v" 1` y bajada con `"flip v" 0`, como `HealthArrowUp1`/`HealthArrowDown1` en `P:\gui\layouts\day_z_hud.layout:849-891` (`"flip v" 1` en `:867`, `"flip v" 0` en `:888`). Desaparece el inexistente `iconArrowDown1`.
 - **#2 Alineación con los iconos vanilla:** nuevo `VitalsFrame` `size 0.9 0.9` centrado que replica el marco de `HudFrameWidget` (`P:\gui\layouts\day_z_hud.layout:1-8`); dentro, `VitalsGroup` copia `NotifiersPanel` (`P:\gui\layouts\day_z_hud.layout:754-766`: 260×81, `halign right_ref`, `valign bottom_ref`, exact 1, `fixaspect fixwidth`). Con `valign bottom_ref` el eje Y crece hacia arriba desde el borde inferior, así que el `%` pasa de `y=59` a `y=9` (35×14, justo bajo el icono de 35×35) y la flecha de `y=74` a `y=1` (22×7, bajo el `%`), centrada con el desplazamiento de 6 px de las flechas vanilla (22 px en 35 px). Los desplazamientos X (0/43/139/182) no cambian.

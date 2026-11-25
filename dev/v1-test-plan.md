@@ -1,7 +1,7 @@
 # NexoDM v1.0: prueba única en PruebasLF
 
 Checklist de lo que solo se puede comprobar en el juego. La prueba se hace una vez, con la v1.0 completa y el paquete
-firmado de la última fase (`C:\Users\guill\Repos\nexo-deploy\<fase>\@NexoDM`, clave `Return0`).
+firmado de la última fase (`<repos>\nexo-deploy\<fase>\@NexoDM`, clave `Return0`).
 
 Preparación:
 - Servidor con `@CF`, `@LBmaster_Core`, `@LBmaster_Groups` y `@NexoDM`; `keys\Return0.bikey` en la carpeta `keys` del servidor.

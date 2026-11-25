@@ -56,7 +56,7 @@ Riesgos de A que verifica la F3 in-game (ninguno se puede verificar offline):
 - No se sabe si `LockControls` deja llegar el ratón para orbitar.
 - `EEKilled(killer)` puede entregar el arma en vez del jugador.
 
-Referencia de diseño, sin copiar código (DSPL-SA): `C:\Users\guill\Repos\BattleRoyale\...\BattleRoyaleSpectators.c` y
+Referencia de diseño, sin copiar código (DSPL-SA): `<repos>\BattleRoyale\...\BattleRoyaleSpectators.c` y
 `BattleRoyaleSpectatorCamera.c`.
 
 ## 2. Mapas: zonas de ChernarusPlus vanilla
