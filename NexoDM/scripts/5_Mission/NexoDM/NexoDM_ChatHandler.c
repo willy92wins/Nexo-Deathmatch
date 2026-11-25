@@ -114,12 +114,12 @@ modded class LBChatHandler
             return manager.IsAdminSteamId(steamId);
 
         // No manager available (non-dedicated / not yet created): fall back to a direct load.
-        // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:25.
+        // R2: NexoDM_Config.Load() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:80.
         NexoDM_Config config = NexoDM_Config.Load();
         if (!config)
             return false;
 
-        // R2: NexoDM_Config.GetAdmins() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:152.
+        // R2: NexoDM_Config.GetAdmins() in NexoDM/scripts/3_Game/NexoDM/NexoDM_Config.c:253.
         array<string> admins = config.GetAdmins();
         if (!admins)
             return false;

@@ -94,7 +94,7 @@ Bloque `Maps` con el esquema v1.0. Los grupos de 3 puntos se han quitado; `Spawn
 "Maps": [
   {
     "Name": "Kamyshovo",
-    "World": "ChernarusPlus",
+    "WorldName": "ChernarusPlus",
     "SpawnRadius": 3,
     "SpawnGroups": [
       { "Name": "Este",  "Points": ["12252.5,5.7,3513.9", "12239.5,5.4,3539.2", "12227.7,5.7,3510.7", "12247.7,5.4,3529.5", "12210.9,5.5,3545.2"] },
@@ -103,7 +103,7 @@ Bloque `Maps` con el esquema v1.0. Los grupos de 3 puntos se han quitado; `Spawn
   },
   {
     "Name": "Vybor",
-    "World": "ChernarusPlus",
+    "WorldName": "ChernarusPlus",
     "SpawnRadius": 3,
     "SpawnGroups": [
       { "Name": "Sureste", "Points": ["3980.4,321.2,8938.5", "3968.8,320.8,8935.0", "3946.4,317.3,8943.9", "3935.6,315.8,8947.4", "3919.2,313.5,8960.0"] },
@@ -113,7 +113,7 @@ Bloque `Maps` con el esquema v1.0. Los grupos de 3 puntos se han quitado; `Spawn
   },
   {
     "Name": "Pavlovo_Militar",
-    "World": "ChernarusPlus",
+    "WorldName": "ChernarusPlus",
     "SpawnRadius": 3,
     "SpawnGroups": [
       { "Name": "Sur",  "Points": ["2004.8,107.4,3320.4", "1994.2,110.0,3333.1", "2014.9,104.7,3312.1", "1978.5,113.6,3352.5", "2030.7,99.8,3302.9"] },
@@ -122,7 +122,7 @@ Bloque `Maps` con el esquema v1.0. Los grupos de 3 puntos se han quitado; `Spawn
   },
   {
     "Name": "Grishino",
-    "World": "ChernarusPlus",
+    "WorldName": "ChernarusPlus",
     "SpawnRadius": 3,
     "SpawnGroups": [
       { "Name": "Noreste", "Points": ["6068.6,271.9,10314.3", "6048.4,270.2,10318.6", "6036.3,269.2,10321.4", "6021.5,268.0,10326.4"] },

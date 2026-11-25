@@ -1,31 +1,86 @@
+// JSON shape of one spawn group inside a map. Points stay strings ("x,y,z") until Validate parses them.
+class NexoDM_SpawnGroupConfig
+{
+    string Name;
+    ref array<string> Points;
+
+    void NexoDM_SpawnGroupConfig()
+    {
+        Points = new array<string>();
+    }
+}
+
+// JSON shape of one arena. WorldName is compared to GetGame().GetWorldName() (case-insensitive).
+class NexoDM_MapConfig
+{
+    string Name;
+    string WorldName;
+    float SpawnRadius;
+    ref array<ref NexoDM_SpawnGroupConfig> SpawnGroups;
+
+    void NexoDM_MapConfig()
+    {
+        SpawnGroups = new array<ref NexoDM_SpawnGroupConfig>();
+    }
+}
+
+// Runtime copy of a group: Points are vectors. Not a JSON field of NexoDM_Config (that class is what JsonFileLoader writes).
+class NexoDM_ParsedSpawnGroup
+{
+    string Name;
+    ref array<vector> Points;
+
+    void NexoDM_ParsedSpawnGroup()
+    {
+        Points = new array<vector>();
+    }
+}
+
+// Runtime copy of a map that belongs to the loaded world and passed the spawn rules.
+class NexoDM_ParsedMap
+{
+    string Name;
+    string WorldName;
+    float SpawnRadius;
+    ref array<ref NexoDM_ParsedSpawnGroup> SpawnGroups;
+
+    void NexoDM_ParsedMap()
+    {
+        SpawnGroups = new array<ref NexoDM_ParsedSpawnGroup>();
+    }
+}
+
 class NexoDM_Config
 {
+    int version;
     ref array<string> Admin;
-    string ClothingPreset;
-    ref array<string> GunPresets;
+    int RoundDuration;
+    int KillsToWin;
+    int RespawnDelay;
+    int MaxPlayers;
     string Knife;
-    string KnifeOneHit;
-    string RoundDuration;
-    string MaxPlayers;
-    ref array<string> RespawnCoordinates;
-    string RespawnRadius;
-    // Unsupervised 24/7 mode: when enabled ("1"/"true"), the round manager arms a StartGame
-    // attempt AutostartDelaySeconds after server boot and after each round returns to idle.
-    // The delay field is only consulted while Autostart is enabled.
-    string Autostart;
-    string AutostartDelaySeconds;
+    bool KnifeOneHit;
+    bool Autostart;
+    int AutostartDelaySeconds;
+    string ClothingPreset;
+    ref array<string> Loadouts;
+    ref array<ref NexoDM_MapConfig> Maps;
 
+    // Instance fields are written by JsonFileLoader. The parsed-map cache stays static so Save() does not emit it.
+    protected static ref array<ref NexoDM_ParsedMap> s_ValidMaps;
     protected static ref map<string, int> s_LastRuleLog = new map<string, int>();
 
     void NexoDM_Config()
     {
         Admin = new array<string>();
-        GunPresets = new array<string>();
-        RespawnCoordinates = new array<string>();
+        Loadouts = new array<string>();
+        Maps = new array<ref NexoDM_MapConfig>();
     }
 
     static NexoDM_Config Load()
     {
+        s_ValidMaps = new array<ref NexoDM_ParsedMap>();
+
         if (!EnsureProfileDirectory())
             return null;
 
@@ -35,11 +90,9 @@ class NexoDM_Config
             NexoDM_Config defaultsConfig = NexoDM_Config.CreateDefaults();
             if (!defaultsConfig.Save())
                 return null;
-            // F-13/F-14 (WARN-3): a freshly created config is ALL placeholders, and no real admin can
-            // start a round until it's edited. Warn here (first boot) so a fully-default install is
-            // diagnosable even though the StartGame placeholder check is never reached in that case.
+            // A fresh file is all placeholders. No round can start until Admin, ClothingPreset and Loadouts are real names.
             string createdMsg = NexoDM_Constants.LOG_PREFIX;
-            createdMsg = createdMsg + "created config.json with PLACEHOLDER defaults; edit $profile:NexoDM\\config.json (Admin/GunPresets/coords) before use";
+            createdMsg = createdMsg + "created config.json with PLACEHOLDER defaults; edit $profile:NexoDM\\config.json (Admin/ClothingPreset/Loadouts) before use";
             // R2: Print(void) in scripts/1_core/proto/endebug.c:96.
             Print(createdMsg);
         }
@@ -53,6 +106,12 @@ class NexoDM_Config
             return null;
         }
 
+        if (!config)
+        {
+            LogRule(NexoDM_Constants.RULE_LOAD_FAILED, errorMessage);
+            return null;
+        }
+
         config.EnsureArrays();
         return config;
     }
@@ -60,20 +119,21 @@ class NexoDM_Config
     static NexoDM_Config CreateDefaults()
     {
         NexoDM_Config config = new NexoDM_Config();
-        config.Admin.Insert(NexoDM_Constants.DEFAULT_ADMIN_1);
-        config.Admin.Insert(NexoDM_Constants.DEFAULT_ADMIN_2);
-        config.ClothingPreset = NexoDM_Constants.DEFAULT_CLOTHING_PRESET;
-        config.GunPresets.Insert(NexoDM_Constants.DEFAULT_GUN_PRESET_1);
-        config.GunPresets.Insert(NexoDM_Constants.DEFAULT_GUN_PRESET_2);
-        config.GunPresets.Insert(NexoDM_Constants.DEFAULT_GUN_PRESET_3);
+        config.version = NexoDM_Constants.DEFAULT_VERSION;
+        config.Admin.Insert(NexoDM_Constants.DEFAULT_ADMIN);
+        config.RoundDuration = NexoDM_Constants.DEFAULT_ROUND_DURATION_VALUE;
+        config.KillsToWin = NexoDM_Constants.DEFAULT_KILLS_TO_WIN;
+        config.RespawnDelay = NexoDM_Constants.DEFAULT_RESPAWN_DELAY;
+        config.MaxPlayers = NexoDM_Constants.DEFAULT_MAX_PLAYERS_VALUE;
         config.Knife = NexoDM_Constants.DEFAULT_KNIFE;
-        config.KnifeOneHit = NexoDM_Constants.DEFAULT_KNIFE_ONE_HIT;
-        config.RoundDuration = NexoDM_Constants.DEFAULT_ROUND_DURATION;
-        config.MaxPlayers = NexoDM_Constants.DEFAULT_MAX_PLAYERS;
-        config.RespawnCoordinates.Insert(NexoDM_Constants.DEFAULT_RESPAWN_COORD);
-        config.RespawnRadius = NexoDM_Constants.DEFAULT_RESPAWN_RADIUS;
-        config.Autostart = NexoDM_Constants.DEFAULT_AUTOSTART;
-        config.AutostartDelaySeconds = NexoDM_Constants.DEFAULT_AUTOSTART_DELAY;
+        config.KnifeOneHit = true;
+        config.Autostart = false;
+        config.AutostartDelaySeconds = NexoDM_Constants.DEFAULT_AUTOSTART_DELAY_VALUE;
+        config.ClothingPreset = NexoDM_Constants.DEFAULT_CLOTHING_PRESET;
+        config.Loadouts.Insert(NexoDM_Constants.DEFAULT_LOADOUT_1);
+        config.Loadouts.Insert(NexoDM_Constants.DEFAULT_LOADOUT_2);
+        // Literal Maps block from dev/F0-discovery.md section 2. No migration of the old coordinate list.
+        AddDefaultMaps(config);
         return config;
     }
 
@@ -96,62 +156,72 @@ class NexoDM_Config
     bool Validate()
     {
         EnsureArrays();
+        s_ValidMaps = new array<ref NexoDM_ParsedMap>();
 
         bool valid = true;
 
-        if (!ValidatePresetField(ClothingPreset, NexoDM_Constants.KEY_CLOTHING_PRESET))
-            valid = false;
-
-        if (!GunPresets || GunPresets.Count() == 0)
+        if (version != NexoDM_Constants.DEFAULT_VERSION)
         {
-            LogRule(NexoDM_Constants.RULE_GUN_PRESETS_EMPTY, NexoDM_Constants.KEY_GUN_PRESETS);
+            LogRule(NexoDM_Constants.RULE_VERSION, NexoDM_Constants.KEY_VERSION);
             valid = false;
         }
-        else
+
+        string roundDetail = string.Empty;
+        if (RoundDuration <= 0)
+            roundDetail = NexoDM_Constants.KEY_ROUND_DURATION;
+        if (KillsToWin <= 0)
         {
-            int gunIndex = 0;
-            for (gunIndex = 0; gunIndex < GunPresets.Count(); gunIndex = gunIndex + 1)
-            {
-                string gunPreset = GunPresets.Get(gunIndex);
-                if (!ValidatePresetField(gunPreset, NexoDM_Constants.KEY_GUN_PRESETS))
-                    valid = false;
-            }
+            if (roundDetail != string.Empty)
+                roundDetail = roundDetail + " ";
+            roundDetail = roundDetail + NexoDM_Constants.KEY_KILLS_TO_WIN;
+        }
+        if (roundDetail != string.Empty)
+        {
+            LogRule(NexoDM_Constants.RULE_ROUND, roundDetail);
+            valid = false;
+        }
+
+        if (RespawnDelay < 0 || RespawnDelay > NexoDM_Constants.RESPAWN_DELAY_MAX)
+        {
+            LogRule(NexoDM_Constants.RULE_RESPAWN_DELAY, NexoDM_Constants.KEY_RESPAWN_DELAY);
+            valid = false;
+        }
+
+        if (MaxPlayers < 2)
+        {
+            LogRule(NexoDM_Constants.RULE_MAX_PLAYERS_INVALID, NexoDM_Constants.KEY_MAX_PLAYERS);
+            valid = false;
         }
 
         if (!ValidateKnife())
             valid = false;
 
-        int roundDuration = 0;
-        if (!TryParsePositiveInt(RoundDuration, roundDuration))
+        if (!ValidatePresetField(ClothingPreset, NexoDM_Constants.KEY_CLOTHING_PRESET))
+            valid = false;
+
+        if (!Loadouts || Loadouts.Count() == 0)
         {
-            LogRule(NexoDM_Constants.RULE_ROUND_DURATION_INVALID, RoundDuration);
+            LogRule(NexoDM_Constants.RULE_PRESET, NexoDM_Constants.KEY_LOADOUTS);
             valid = false;
         }
-
-        int maxPlayers = 0;
-        if (!TryParseInt(MaxPlayers, maxPlayers) || maxPlayers < 2)
+        else
         {
-            LogRule(NexoDM_Constants.RULE_MAX_PLAYERS_INVALID, MaxPlayers);
-            valid = false;
+            int loadoutIndex = 0;
+            for (loadoutIndex = 0; loadoutIndex < Loadouts.Count(); loadoutIndex = loadoutIndex + 1)
+            {
+                string loadoutName = Loadouts.Get(loadoutIndex);
+                if (!ValidatePresetField(loadoutName, NexoDM_Constants.KEY_LOADOUTS))
+                    valid = false;
+            }
         }
 
-        float respawnRadius = 0.0;
-        if (!TryParsePositiveFloat(RespawnRadius, respawnRadius))
-        {
-            LogRule(NexoDM_Constants.RULE_RADIUS_INVALID, NexoDM_Constants.KEY_RESPAWN_RADIUS);
-            valid = false;
-        }
-
-        if (!ValidateCoordList(RespawnCoordinates, NexoDM_Constants.KEY_RESPAWN_COORDINATES))
+        if (!ValidateMaps())
             valid = false;
 
         return valid;
     }
 
-    // F-13/F-14: log a warning for each config field still at its placeholder default, so an operator
-    // who forgot to edit $profile:NexoDM\config.json sees why a round spawns players unarmed
-    // (placeholder presets) or in the sky (placeholder coords). Non-blocking; logs each field directly
-    // via LogPlaceholder (not the rate-limited LogRule, which would dedup all but the first per category).
+    // Placeholder names (CAMBIAR_*) are logged at round start. Non-blocking: the 4_World preset resolve is what rejects the round.
     void LogPlaceholderWarnings()
     {
         EnsureArrays();
@@ -160,30 +230,21 @@ class NexoDM_Config
         for (i = 0; i < Admin.Count(); i = i + 1)
         {
             string adminId = Admin.Get(i);
-            if (adminId == NexoDM_Constants.DEFAULT_ADMIN_1 || adminId == NexoDM_Constants.DEFAULT_ADMIN_2)
+            if (adminId == NexoDM_Constants.DEFAULT_ADMIN)
                 LogPlaceholder("admin id", adminId);
         }
 
         if (ClothingPreset == NexoDM_Constants.DEFAULT_CLOTHING_PRESET)
             LogPlaceholder("ClothingPreset", ClothingPreset);
 
-        for (i = 0; i < GunPresets.Count(); i = i + 1)
+        for (i = 0; i < Loadouts.Count(); i = i + 1)
         {
-            string gunName = GunPresets.Get(i);
-            if (gunName == NexoDM_Constants.DEFAULT_GUN_PRESET_1 || gunName == NexoDM_Constants.DEFAULT_GUN_PRESET_2 || gunName == NexoDM_Constants.DEFAULT_GUN_PRESET_3)
-                LogPlaceholder("GunPreset", gunName);
+            string loadoutName = Loadouts.Get(i);
+            if (loadoutName == NexoDM_Constants.DEFAULT_LOADOUT_1 || loadoutName == NexoDM_Constants.DEFAULT_LOADOUT_2)
+                LogPlaceholder("Loadout", loadoutName);
         }
-
-        for (i = 0; i < RespawnCoordinates.Count(); i = i + 1)
-        {
-            if (RespawnCoordinates.Get(i) == NexoDM_Constants.DEFAULT_RESPAWN_COORD)
-                LogPlaceholder("RespawnCoordinate", RespawnCoordinates.Get(i));
-        }
-
     }
 
-    // F-13/F-14 (WARN-1): direct, non-rate-limited log so EVERY placeholder field is reported at round
-    // start. LogRule dedups by ruleId, which would hide all but the first placeholder per category.
     protected void LogPlaceholder(string fieldName, string value)
     {
         string message = NexoDM_Constants.LOG_PREFIX;
@@ -206,10 +267,10 @@ class NexoDM_Config
         return ClothingPreset;
     }
 
-    array<string> GetGunPresets()
+    array<string> GetLoadouts()
     {
         EnsureArrays();
-        return GunPresets;
+        return Loadouts;
     }
 
     string GetKnife()
@@ -219,79 +280,85 @@ class NexoDM_Config
 
     bool GetKnifeOneHit()
     {
-        string value = KnifeOneHit;
-        // R2: string.ToLower() in scripts/1_core/proto/enstring.c:171.
-        value.ToLower();
-        if (value == NexoDM_Constants.BOOL_TRUE)
-            return true;
-        if (value == NexoDM_Constants.BOOL_ONE)
-            return true;
-        return false;
+        return KnifeOneHit;
     }
 
     int GetRoundDuration()
     {
-        int parsed = 0;
-        if (TryParsePositiveInt(RoundDuration, parsed))
-            return parsed;
+        if (RoundDuration > 0)
+            return RoundDuration;
         return NexoDM_Constants.DEFAULT_ROUND_DURATION_VALUE;
+    }
+
+    int GetKillsToWin()
+    {
+        return KillsToWin;
+    }
+
+    int GetRespawnDelay()
+    {
+        return RespawnDelay;
     }
 
     int GetMaxPlayers()
     {
-        int parsed = 0;
-        if (TryParseInt(MaxPlayers, parsed) && parsed >= 2)
-            return parsed;
+        if (MaxPlayers >= 2)
+            return MaxPlayers;
         return NexoDM_Constants.DEFAULT_MAX_PLAYERS_VALUE;
     }
 
     bool GetAutostart()
     {
-        string value = Autostart;
-        // R2: string.ToLower() in scripts/1_core/proto/enstring.c:171.
-        value.ToLower();
-        if (value == NexoDM_Constants.BOOL_TRUE)
-            return true;
-        if (value == NexoDM_Constants.BOOL_ONE)
-            return true;
-        return false;
+        return Autostart;
     }
 
-    // Soft-fallback by design: an unparseable/non-positive delay logs (rate-limited) and uses the
-    // default instead of failing Validate(), so a typo here can never block manual rounds or kill
-    // the unsupervised loop. Only consulted while GetAutostart() is true.
+    // Soft-fallback: a non-positive delay logs and uses the default. It does not fail Validate().
+    // Only consulted while GetAutostart() is true. F3 owns the timer.
     int GetAutostartDelaySeconds()
     {
-        int parsed = 0;
-        if (TryParsePositiveInt(AutostartDelaySeconds, parsed))
-            return parsed;
+        if (AutostartDelaySeconds > 0)
+            return AutostartDelaySeconds;
 
-        LogRule(NexoDM_Constants.RULE_AUTOSTART_DELAY_INVALID, AutostartDelaySeconds);
+        LogRule(NexoDM_Constants.RULE_AUTOSTART_DELAY_INVALID, AutostartDelaySeconds.ToString());
         return NexoDM_Constants.DEFAULT_AUTOSTART_DELAY_VALUE;
     }
 
-    float GetRespawnRadius()
+    // Maps of the loaded world, filled by Validate(). Groups carry array<vector>, not the raw strings.
+    array<ref NexoDM_ParsedMap> GetValidMaps()
     {
-        float parsed = 0.0;
-        if (TryParsePositiveFloat(RespawnRadius, parsed))
-            return parsed;
-        return NexoDM_Constants.DEFAULT_RESPAWN_RADIUS_VALUE;
-    }
-
-    array<vector> GetRespawnCoords()
-    {
-        EnsureArrays();
-        return ParseCoordListWithFallback(RespawnCoordinates, NexoDM_Constants.DEFAULT_RESPAWN_COORD);
+        if (!s_ValidMaps)
+            s_ValidMaps = new array<ref NexoDM_ParsedMap>();
+        return s_ValidMaps;
     }
 
     protected void EnsureArrays()
     {
         if (!Admin)
             Admin = new array<string>();
-        if (!GunPresets)
-            GunPresets = new array<string>();
-        if (!RespawnCoordinates)
-            RespawnCoordinates = new array<string>();
+        if (!Loadouts)
+            Loadouts = new array<string>();
+        if (!Maps)
+            Maps = new array<ref NexoDM_MapConfig>();
+
+        int mapIndex = 0;
+        for (mapIndex = 0; mapIndex < Maps.Count(); mapIndex = mapIndex + 1)
+        {
+            NexoDM_MapConfig mapCfg = Maps.Get(mapIndex);
+            if (!mapCfg)
+                continue;
+            if (!mapCfg.SpawnGroups)
+                mapCfg.SpawnGroups = new array<ref NexoDM_SpawnGroupConfig>();
+
+            int groupIndex = 0;
+            for (groupIndex = 0; groupIndex < mapCfg.SpawnGroups.Count(); groupIndex = groupIndex + 1)
+            {
+                NexoDM_SpawnGroupConfig group = mapCfg.SpawnGroups.Get(groupIndex);
+                if (!group)
+                    continue;
+                if (!group.Points)
+                    group.Points = new array<string>();
+            }
+        }
     }
 
     protected static bool EnsureProfileDirectory()
@@ -316,15 +383,13 @@ class NexoDM_Config
         string trimmedName = presetName.Trim();
         if (trimmedName == string.Empty)
         {
-            LogRule(NexoDM_Constants.RULE_PRESET_MISSING, fieldName);
+            LogRule(NexoDM_Constants.RULE_PRESET, fieldName);
             return false;
         }
 
-        // Layer constraint (R20): LB_PresetLoader vive en 4_World y NO es visible en 3_Game
-        // (esta clase compila en el modulo Game). La existencia del preset en LBmaster se
-        // valida/guarda en el spawn (4_World): RoundManager null-checkea LB_PresetLoader.Get y
-        // GetPreset() antes de cada SpawnPreset (NexoDM_RoundManager.c:751-760 / 1212-1237).
-        // Aqui (3_Game) solo se valida que el nombre del preset no este vacio.
+        // R2: LB_PresetLoader lives in 4_World and is invisible from this Game module.
+        // StartGame (NexoDM_RoundManager) resolves ClothingPreset and every Loadouts entry
+        // with LB_PresetLoader.Get.GetPreset after this method returns.
         return true;
     }
 
@@ -358,56 +423,131 @@ class NexoDM_Config
         return true;
     }
 
-    protected bool ValidateCoordList(array<string> rawCoords, string fieldName)
+    protected bool ValidateMaps()
     {
-        if (!rawCoords || rawCoords.Count() == 0)
+        if (!Maps || Maps.Count() == 0)
         {
-            LogRule(NexoDM_Constants.RULE_COORD_INVALID, fieldName);
+            LogRule(NexoDM_Constants.RULE_MAPS, NexoDM_Constants.KEY_MAPS);
             return false;
         }
 
-        bool valid = true;
-        int coordIndex = 0;
-        for (coordIndex = 0; coordIndex < rawCoords.Count(); coordIndex = coordIndex + 1)
+        bool spawnOk = true;
+        int mapIndex = 0;
+        for (mapIndex = 0; mapIndex < Maps.Count(); mapIndex = mapIndex + 1)
         {
-            vector parsed = vector.Zero;
-            string rawCoord = rawCoords.Get(coordIndex);
-            if (!TryParseCoord(rawCoord, parsed))
+            NexoDM_MapConfig mapCfg = Maps.Get(mapIndex);
+            if (!mapCfg)
             {
-                string message = fieldName;
-                message = message + ":";
-                message = message + rawCoord;
-                LogRule(NexoDM_Constants.RULE_COORD_INVALID, message);
-                valid = false;
+                LogRule(NexoDM_Constants.RULE_SPAWN, NexoDM_Constants.KEY_MAPS);
+                spawnOk = false;
+                continue;
             }
+
+            if (!WorldMatches(mapCfg.WorldName))
+            {
+                LogRule(NexoDM_Constants.RULE_MAP_OTHER_WORLD, mapCfg.Name);
+                continue;
+            }
+
+            NexoDM_ParsedMap parsed = ParseMap(mapCfg);
+            if (!parsed)
+                spawnOk = false;
+            else
+                s_ValidMaps.Insert(parsed);
         }
 
-        return valid;
+        if (!spawnOk)
+            return false;
+
+        if (!s_ValidMaps || s_ValidMaps.Count() == 0)
+        {
+            LogRule(NexoDM_Constants.RULE_MAPS, NexoDM_Constants.KEY_MAPS);
+            return false;
+        }
+
+        return true;
     }
 
-    protected array<vector> ParseCoordListWithFallback(array<string> rawCoords, string fallbackRaw)
+    protected bool WorldMatches(string mapWorld)
     {
-        array<vector> coords = new array<vector>();
-        vector parsed = vector.Zero;
+        // R2: GetGame() in scripts/3_game/gameplay.c:636.
+        DayZGame game = GetGame();
+        if (!game)
+            return false;
 
-        int coordIndex = 0;
-        if (rawCoords)
+        // R2: CGame.GetWorldName() in scripts/3_game/global/game.c:934.
+        string loaded = game.GetWorldName();
+        string wanted = mapWorld;
+        // R2: string.ToLower() in scripts/1_core/proto/enstring.c:171. Mutates the receiver, so both are copies.
+        loaded.ToLower();
+        wanted.ToLower();
+        if (loaded == string.Empty)
+            return false;
+        return loaded == wanted;
+    }
+
+    protected NexoDM_ParsedMap ParseMap(NexoDM_MapConfig mapCfg)
+    {
+        if (!mapCfg.SpawnGroups || mapCfg.SpawnGroups.Count() == 0)
         {
-            for (coordIndex = 0; coordIndex < rawCoords.Count(); coordIndex = coordIndex + 1)
+            string emptyGroups = NexoDM_Constants.KEY_SPAWN_GROUPS;
+            emptyGroups = emptyGroups + " ";
+            emptyGroups = emptyGroups + mapCfg.Name;
+            LogRule(NexoDM_Constants.RULE_SPAWN, emptyGroups);
+            return null;
+        }
+
+        NexoDM_ParsedMap parsed = new NexoDM_ParsedMap();
+        parsed.Name = mapCfg.Name;
+        parsed.WorldName = mapCfg.WorldName;
+        parsed.SpawnRadius = mapCfg.SpawnRadius;
+
+        bool pointsOk = true;
+        int groupIndex = 0;
+        for (groupIndex = 0; groupIndex < mapCfg.SpawnGroups.Count(); groupIndex = groupIndex + 1)
+        {
+            NexoDM_SpawnGroupConfig group = mapCfg.SpawnGroups.Get(groupIndex);
+            if (!group || !group.Points || group.Points.Count() == 0)
             {
-                string rawCoord = rawCoords.Get(coordIndex);
-                if (TryParseCoord(rawCoord, parsed))
-                    coords.Insert(parsed);
+                string emptyPoints = NexoDM_Constants.KEY_POINTS;
+                emptyPoints = emptyPoints + " ";
+                emptyPoints = emptyPoints + mapCfg.Name;
+                LogRule(NexoDM_Constants.RULE_SPAWN, emptyPoints);
+                pointsOk = false;
+                continue;
             }
+
+            NexoDM_ParsedSpawnGroup parsedGroup = new NexoDM_ParsedSpawnGroup();
+            parsedGroup.Name = group.Name;
+
+            int pointIndex = 0;
+            for (pointIndex = 0; pointIndex < group.Points.Count(); pointIndex = pointIndex + 1)
+            {
+                vector parsedPoint = vector.Zero;
+                string rawPoint = group.Points.Get(pointIndex);
+                if (!TryParseCoord(rawPoint, parsedPoint))
+                {
+                    string badPoint = NexoDM_Constants.KEY_POINTS;
+                    badPoint = badPoint + " ";
+                    badPoint = badPoint + rawPoint;
+                    LogRule(NexoDM_Constants.RULE_SPAWN, badPoint);
+                    pointsOk = false;
+                }
+                else
+                {
+                    parsedGroup.Points.Insert(parsedPoint);
+                }
+            }
+
+            if (parsedGroup.Points.Count() > 0)
+                parsed.SpawnGroups.Insert(parsedGroup);
         }
 
-        if (coords.Count() == 0)
-        {
-            if (TryParseCoord(fallbackRaw, parsed))
-                coords.Insert(parsed);
-        }
-
-        return coords;
+        if (!pointsOk)
+            return null;
+        if (parsed.SpawnGroups.Count() == 0)
+            return null;
+        return parsed;
     }
 
     protected bool TryParseCoord(string raw, out vector parsed)
@@ -442,37 +582,6 @@ class NexoDM_Config
         return true;
     }
 
-    protected bool TryParsePositiveInt(string raw, out int parsed)
-    {
-        if (!TryParseInt(raw, parsed))
-            return false;
-        if (parsed <= 0)
-            return false;
-        return true;
-    }
-
-    protected bool TryParseInt(string raw, out int parsed)
-    {
-        parsed = 0;
-        // R2: string.Trim() in scripts/1_core/proto/enstring.c:304.
-        string value = raw.Trim();
-        if (!IsIntString(value))
-            return false;
-
-        // R2: string.ToInt() in scripts/1_core/proto/enstring.c:20.
-        parsed = value.ToInt();
-        return true;
-    }
-
-    protected bool TryParsePositiveFloat(string raw, out float parsed)
-    {
-        if (!TryParseFloat(raw, parsed))
-            return false;
-        if (parsed <= 0.0)
-            return false;
-        return true;
-    }
-
     protected bool TryParseFloat(string raw, out float parsed)
     {
         parsed = 0.0;
@@ -484,35 +593,6 @@ class NexoDM_Config
         // R2: string.ToFloat() in scripts/1_core/proto/enstring.c:46.
         parsed = value.ToFloat();
         return true;
-    }
-
-    protected bool IsIntString(string value)
-    {
-        if (value == string.Empty)
-            return false;
-
-        int digitCount = 0;
-        int valueIndex = 0;
-        // R2: string.Length()/Substring()/IndexOf() in scripts/1_core/proto/enstring.c:199/:113/:240.
-        for (valueIndex = 0; valueIndex < value.Length(); valueIndex = valueIndex + 1)
-        {
-            string current = value.Substring(valueIndex, 1);
-            if (current == NexoDM_Constants.MINUS)
-            {
-                if (valueIndex != 0)
-                    return false;
-            }
-            else if (NexoDM_Constants.DIGITS.IndexOf(current) == -1)
-            {
-                return false;
-            }
-            else
-            {
-                digitCount = digitCount + 1;
-            }
-        }
-
-        return digitCount > 0;
     }
 
     protected bool IsFloatString(string value)
@@ -551,6 +631,104 @@ class NexoDM_Config
         return digitCount > 0;
     }
 
+    protected static void AddDefaultMaps(NexoDM_Config config)
+    {
+        NexoDM_MapConfig kamyshovo = AddMap(config, "Kamyshovo", "ChernarusPlus");
+        NexoDM_SpawnGroupConfig kamyshovoEste = AddGroup(kamyshovo, "Este");
+        kamyshovoEste.Points.Insert("12252.5,5.7,3513.9");
+        kamyshovoEste.Points.Insert("12239.5,5.4,3539.2");
+        kamyshovoEste.Points.Insert("12227.7,5.7,3510.7");
+        kamyshovoEste.Points.Insert("12247.7,5.4,3529.5");
+        kamyshovoEste.Points.Insert("12210.9,5.5,3545.2");
+        NexoDM_SpawnGroupConfig kamyshovoCentro = AddGroup(kamyshovo, "Centro");
+        kamyshovoCentro.Points.Insert("12198.4,5.5,3544.4");
+        kamyshovoCentro.Points.Insert("12153.4,6.1,3501.2");
+        kamyshovoCentro.Points.Insert("12178.2,6.1,3504.4");
+        kamyshovoCentro.Points.Insert("12127.8,6.0,3548.5");
+        kamyshovoCentro.Points.Insert("12156.1,5.8,3545.5");
+
+        NexoDM_MapConfig vybor = AddMap(config, "Vybor", "ChernarusPlus");
+        NexoDM_SpawnGroupConfig vyborSureste = AddGroup(vybor, "Sureste");
+        vyborSureste.Points.Insert("3980.4,321.2,8938.5");
+        vyborSureste.Points.Insert("3968.8,320.8,8935.0");
+        vyborSureste.Points.Insert("3946.4,317.3,8943.9");
+        vyborSureste.Points.Insert("3935.6,315.8,8947.4");
+        vyborSureste.Points.Insert("3919.2,313.5,8960.0");
+        NexoDM_SpawnGroupConfig vyborNoroeste = AddGroup(vybor, "Noroeste");
+        vyborNoroeste.Points.Insert("3829.8,313.4,9084.7");
+        vyborNoroeste.Points.Insert("3826.7,313.0,9067.5");
+        vyborNoroeste.Points.Insert("3854.1,311.9,9027.2");
+        vyborNoroeste.Points.Insert("3844.1,312.7,9049.2");
+        vyborNoroeste.Points.Insert("3819.2,312.9,9060.7");
+        NexoDM_SpawnGroupConfig vyborSuroeste = AddGroup(vybor, "Suroeste");
+        vyborSuroeste.Points.Insert("3907.7,312.2,8965.3");
+        vyborSuroeste.Points.Insert("3855.0,311.1,8980.3");
+        vyborSuroeste.Points.Insert("3850.3,311.0,8932.0");
+        vyborSuroeste.Points.Insert("3852.7,311.1,8969.0");
+        vyborSuroeste.Points.Insert("3871.9,310.8,8974.5");
+
+        NexoDM_MapConfig pavlovo = AddMap(config, "Pavlovo_Militar", "ChernarusPlus");
+        NexoDM_SpawnGroupConfig pavlovoSur = AddGroup(pavlovo, "Sur");
+        pavlovoSur.Points.Insert("2004.8,107.4,3320.4");
+        pavlovoSur.Points.Insert("1994.2,110.0,3333.1");
+        pavlovoSur.Points.Insert("2014.9,104.7,3312.1");
+        pavlovoSur.Points.Insert("1978.5,113.6,3352.5");
+        pavlovoSur.Points.Insert("2030.7,99.8,3302.9");
+        NexoDM_SpawnGroupConfig pavlovoEste = AddGroup(pavlovo, "Este");
+        pavlovoEste.Points.Insert("2102.5,103.3,3446.8");
+        pavlovoEste.Points.Insert("2109.8,99.6,3428.9");
+        pavlovoEste.Points.Insert("2112.8,96.6,3416.2");
+        pavlovoEste.Points.Insert("2092.5,107.5,3469.6");
+        pavlovoEste.Points.Insert("2112.8,92.8,3390.7");
+
+        NexoDM_MapConfig grishino = AddMap(config, "Grishino", "ChernarusPlus");
+        NexoDM_SpawnGroupConfig grishinoNoreste = AddGroup(grishino, "Noreste");
+        grishinoNoreste.Points.Insert("6068.6,271.9,10314.3");
+        grishinoNoreste.Points.Insert("6048.4,270.2,10318.6");
+        grishinoNoreste.Points.Insert("6036.3,269.2,10321.4");
+        grishinoNoreste.Points.Insert("6021.5,268.0,10326.4");
+        NexoDM_SpawnGroupConfig grishinoSuroeste = AddGroup(grishino, "Suroeste");
+        grishinoSuroeste.Points.Insert("5907.7,270.6,10239.9");
+        grishinoSuroeste.Points.Insert("5915.6,274.2,10209.9");
+        grishinoSuroeste.Points.Insert("5926.5,276.2,10202.8");
+        grishinoSuroeste.Points.Insert("5896.9,271.7,10224.5");
+        grishinoSuroeste.Points.Insert("5905.6,272.6,10217.5");
+        NexoDM_SpawnGroupConfig grishinoNorte = AddGroup(grishino, "Norte");
+        grishinoNorte.Points.Insert("5923.4,269.1,10259.4");
+        grishinoNorte.Points.Insert("5982.7,266.9,10345.0");
+        grishinoNorte.Points.Insert("5934.9,268.4,10274.2");
+        grishinoNorte.Points.Insert("6000.4,267.0,10334.7");
+        grishinoNorte.Points.Insert("5974.7,267.0,10335.3");
+    }
+
+    protected static NexoDM_MapConfig AddMap(NexoDM_Config config, string name, string world)
+    {
+        NexoDM_MapConfig mapCfg = new NexoDM_MapConfig();
+        mapCfg.Name = name;
+        mapCfg.WorldName = world;
+        mapCfg.SpawnRadius = NexoDM_Constants.DEFAULT_SPAWN_RADIUS;
+        config.Maps.Insert(mapCfg);
+        return mapCfg;
+    }
+
+    protected static NexoDM_SpawnGroupConfig AddGroup(NexoDM_MapConfig mapCfg, string name)
+    {
+        NexoDM_SpawnGroupConfig group = new NexoDM_SpawnGroupConfig();
+        group.Name = name;
+        mapCfg.SpawnGroups.Insert(group);
+        return group;
+    }
+
+    protected static bool IsUnguardedConfigRule(string ruleId)
+    {
+        if (ruleId == NexoDM_Constants.RULE_MAP_OTHER_WORLD)
+            return true;
+        // R2: string.IndexOf(string) in scripts/1_core/proto/enstring.c:240.
+        if (ruleId.IndexOf("E_CFG_") == 0)
+            return true;
+        return false;
+    }
+
     protected static void LogRule(string ruleId, string detail)
     {
         if (!s_LastRuleLog)
@@ -561,17 +739,22 @@ class NexoDM_Config
         if (GetGame())
             now = GetGame().GetTime();
 
-        int last = 0;
-        // R2: map.Find(TKey,out TValue) in scripts/1_core/proto/enscript.c:858.
-        if (s_LastRuleLog.Find(ruleId, last))
+        // E_CFG_* and W_CFG_MAP_OTHER_WORLD always print. The 30 s gate hid a second other-world map
+        // and a retry of StartGame inside that window.
+        if (!IsUnguardedConfigRule(ruleId))
         {
-            int elapsed = now - last;
-            if (elapsed >= 0 && elapsed < NexoDM_Constants.LOG_RULE_INTERVAL_MS)
-                return;
-        }
+            int last = 0;
+            // R2: map.Find(TKey,out TValue) in scripts/1_core/proto/enscript.c:858.
+            if (s_LastRuleLog.Find(ruleId, last))
+            {
+                int elapsed = now - last;
+                if (elapsed >= 0 && elapsed < NexoDM_Constants.LOG_RULE_INTERVAL_MS)
+                    return;
+            }
 
-        // R2: map.Set(TKey,TValue) in scripts/1_core/proto/enscript.c:883.
-        s_LastRuleLog.Set(ruleId, now);
+            // R2: map.Set(TKey,TValue) in scripts/1_core/proto/enscript.c:883.
+            s_LastRuleLog.Set(ruleId, now);
+        }
 
         string message = NexoDM_Constants.LOG_PREFIX;
         message = message + ruleId;
@@ -581,6 +764,3 @@ class NexoDM_Config
         Print(message);
     }
 }
-
-
-
