@@ -8,6 +8,7 @@ modded class PlayerBase
     int m_NexoDM_SentBlood;
     int m_NexoDM_SentWater;
     int m_NexoDM_SentFood;
+    int m_NexoDM_KoStartMs;
 
     void PlayerBase()
     {
@@ -23,6 +24,7 @@ modded class PlayerBase
         m_NexoDM_SentBlood = -1;
         m_NexoDM_SentWater = -1;
         m_NexoDM_SentFood = -1;
+        m_NexoDM_KoStartMs = 0;
     }
 
     // R2: PlayerBase.OnScheduledTick(float) in scripts/4_world/entities/manbase/playerbase.c:3007.
@@ -90,6 +92,17 @@ modded class PlayerBase
     // R2: PlayerBase.EEDelete(EntityAI) in scripts/4_world/entities/manbase/playerbase.c:1393.
     override void EEDelete(EntityAI parent)
     {
+#ifdef SERVER
+        // F7: cancel a pending short-KO wake so it never fires on a deleted body.
+        // R2: GetGame() in scripts/3_game/gameplay.c:636.
+        DayZGame koGame = GetGame();
+        if (koGame)
+        {
+            // R2: CGame.GetCallQueue(int) in scripts/3_game/global/game.c:1550;
+            // ScriptCallQueue.Remove(func) in scripts/2_gamelib/tools.c:65.
+            koGame.GetCallQueue(CALL_CATEGORY_GAMEPLAY).Remove(NexoDM_KoWake);
+        }
+#endif
 #ifndef SERVER
         DayZGame game = GetGame();
         // R2: CGame.GetPlayer() in scripts/3_game/global/game.c:1090.
@@ -101,6 +114,83 @@ modded class PlayerBase
         }
 #endif
         super.EEDelete(parent);
+    }
+
+    // F7 short KO (server only, round or not): 1 s after unconsciousness starts, raise shock to
+    // max; vanilla then wakes the player under its own rules (incl. its ~2 s minimum).
+    // R2: PlayerBase.OnUnconsciousStart() in scripts/4_world/entities/manbase/playerbase.c:3756.
+    override void OnUnconsciousStart()
+    {
+        super.OnUnconsciousStart();
+
+#ifdef SERVER
+        // R2: GetGame() in scripts/3_game/gameplay.c:636.
+        DayZGame koStartGame = GetGame();
+        if (!koStartGame)
+            return;
+
+        // R2: CGame.IsServer() in scripts/3_game/global/game.c:1120.
+        if (!koStartGame.IsServer())
+            return;
+
+        // R2: CGame.GetTime() in scripts/3_game/global/game.c:1535.
+        m_NexoDM_KoStartMs = koStartGame.GetTime();
+
+        string koStartMsg = "[NexoDM][KO] unconscious start t=";
+        koStartMsg = koStartMsg + m_NexoDM_KoStartMs.ToString();
+        koStartMsg = koStartMsg + " ms";
+        // R2: Print(void) in scripts/1_core/proto/endebug.c:96.
+        Print(koStartMsg);
+
+        // R2: CGame.GetCallQueue(int) in scripts/3_game/global/game.c:1550;
+        // ScriptCallQueue.Remove(func) in scripts/2_gamelib/tools.c:65;
+        // ScriptCallQueue.CallLater(func,int,bool,...) in scripts/2_gamelib/tools.c:61.
+        koStartGame.GetCallQueue(CALL_CATEGORY_GAMEPLAY).Remove(NexoDM_KoWake);
+        koStartGame.GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(NexoDM_KoWake, NexoDM_Constants.KO_WAKE_DELAY_MS, false);
+#endif
+    }
+
+    protected void NexoDM_KoWake()
+    {
+#ifdef SERVER
+        // R2: GetGame() in scripts/3_game/gameplay.c:636.
+        DayZGame koWakeGame = GetGame();
+        if (!koWakeGame)
+            return;
+
+        // R2: CGame.IsServer() in scripts/3_game/global/game.c:1120.
+        if (!koWakeGame.IsServer())
+            return;
+
+        // R2: Object.IsAlive() in scripts/3_game/entities/object.c:517.
+        if (!IsAlive())
+            return;
+
+        // R2: EntityAI.IsSetForDeletion() in scripts/3_game/entities/entityai.c:812.
+        if (IsSetForDeletion())
+            return;
+
+        // R2: Man.IsUnconscious() in scripts/3_game/entities/man.c:63
+        // (PlayerBase impl in scripts/4_world/entities/manbase/playerbase.c:3925).
+        if (!IsUnconscious())
+            return;
+
+        // R2: Object.SetHealth(string,string,float) in scripts/3_game/entities/object.c:1015
+        // (vanilla shock write in scripts/4_world/classes/playermodifiers/modifiers/diseases/heatstroke.c:383);
+        // Object.GetMaxHealth(string,string) in scripts/3_game/entities/object.c:1008
+        // (vanilla shock max read in scripts/4_world/classes/shockhandler.c:35).
+        SetHealth("", "Shock", GetMaxHealth("", "Shock"));
+
+        // R2: CGame.GetTime() in scripts/3_game/global/game.c:1535.
+        int koWakeMs = koWakeGame.GetTime();
+        string koWakeMsg = "[NexoDM][KO] shock raised to max t=";
+        koWakeMsg = koWakeMsg + koWakeMs.ToString();
+        koWakeMsg = koWakeMsg + " ms start=";
+        koWakeMsg = koWakeMsg + m_NexoDM_KoStartMs.ToString();
+        koWakeMsg = koWakeMsg + " ms";
+        // R2: Print(void) in scripts/1_core/proto/endebug.c:96.
+        Print(koWakeMsg);
+#endif
     }
 
     // R2: PlayerBase.OnDisconnect() in scripts/4_world/entities/manbase/playerbase.c:7647.
