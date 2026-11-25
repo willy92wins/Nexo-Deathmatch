@@ -117,7 +117,9 @@ modded class PlayerBase
     }
 
     // F7 short KO (server only, round or not): 1 s after unconsciousness starts, raise shock to
-    // max; vanilla then wakes the player under its own rules (incl. its ~2 s minimum).
+    // max, then re-raise every 500 ms while still unconscious (a later hit can drop shock again
+    // before vanilla wakes the player), capped at 10 s from the start; vanilla then wakes the
+    // player under its own rules (incl. its ~2 s minimum).
     // R2: PlayerBase.OnUnconsciousStart() in scripts/4_world/entities/manbase/playerbase.c:3756.
     override void OnUnconsciousStart()
     {
@@ -131,6 +133,11 @@ modded class PlayerBase
 
         // R2: CGame.IsServer() in scripts/3_game/global/game.c:1120.
         if (!koStartGame.IsServer())
+            return;
+
+        // R2: PlayerBase.IsPlayerDisconnected() in scripts/4_world/entities/manbase/playerbase.c:2638
+        // (set true by PlayerBase.OnDisconnect() in scripts/4_world/entities/manbase/playerbase.c:7665).
+        if (IsPlayerDisconnected())
             return;
 
         // R2: CGame.GetTime() in scripts/3_game/global/game.c:1535.
@@ -162,6 +169,12 @@ modded class PlayerBase
         if (!koWakeGame.IsServer())
             return;
 
+        // R2: PlayerBase.IsPlayerDisconnected() in scripts/4_world/entities/manbase/playerbase.c:2638
+        // (set true by PlayerBase.OnDisconnect() in scripts/4_world/entities/manbase/playerbase.c:7665).
+        // No raise and no re-schedule: vanilla combat-log death of a disconnected body is respected.
+        if (IsPlayerDisconnected())
+            return;
+
         // R2: Object.IsAlive() in scripts/3_game/entities/object.c:517.
         if (!IsAlive())
             return;
@@ -175,14 +188,18 @@ modded class PlayerBase
         if (!IsUnconscious())
             return;
 
+        // R2: CGame.GetTime() in scripts/3_game/global/game.c:1535.
+        int koWakeMs = koWakeGame.GetTime();
+        int koElapsedMs = koWakeMs - m_NexoDM_KoStartMs;
+        if (koElapsedMs >= NexoDM_Constants.KO_WAKE_MAX_MS)
+            return;
+
         // R2: Object.SetHealth(string,string,float) in scripts/3_game/entities/object.c:1015
         // (vanilla shock write in scripts/4_world/classes/playermodifiers/modifiers/diseases/heatstroke.c:383);
         // Object.GetMaxHealth(string,string) in scripts/3_game/entities/object.c:1008
         // (vanilla shock max read in scripts/4_world/classes/shockhandler.c:35).
         SetHealth("", "Shock", GetMaxHealth("", "Shock"));
 
-        // R2: CGame.GetTime() in scripts/3_game/global/game.c:1535.
-        int koWakeMs = koWakeGame.GetTime();
         string koWakeMsg = "[NexoDM][KO] shock raised to max t=";
         koWakeMsg = koWakeMsg + koWakeMs.ToString();
         koWakeMsg = koWakeMsg + " ms start=";
@@ -190,6 +207,15 @@ modded class PlayerBase
         koWakeMsg = koWakeMsg + " ms";
         // R2: Print(void) in scripts/1_core/proto/endebug.c:96.
         Print(koWakeMsg);
+
+        // Re-raise every KO_WAKE_REPEAT_MS while the guards above still pass, but schedule
+        // nothing at or past the KO_WAKE_MAX_MS cap from the start, so the loop terminates.
+        if (koElapsedMs + NexoDM_Constants.KO_WAKE_REPEAT_MS < NexoDM_Constants.KO_WAKE_MAX_MS)
+        {
+            // R2: CGame.GetCallQueue(int) in scripts/3_game/global/game.c:1550;
+            // ScriptCallQueue.CallLater(func,int,bool,...) in scripts/2_gamelib/tools.c:61.
+            koWakeGame.GetCallQueue(CALL_CATEGORY_GAMEPLAY).CallLater(NexoDM_KoWake, NexoDM_Constants.KO_WAKE_REPEAT_MS, false);
+        }
 #endif
     }
 

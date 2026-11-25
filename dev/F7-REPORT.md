@@ -62,3 +62,46 @@ el mod», sin limitar a dedicado.
 - Las citas `R2:` preexistentes del fichero (p. ej. `GetTime` en `game.c:1510`, `IsAlive` en
   `object.c:523`) difieren en pocas líneas de esta copia 1.30; no se han tocado (R25: nada
   más) y las citas nuevas usan las líneas verificadas aquí.
+
+## Corrección 1
+
+Solo los dos hallazgos de la ronda 1; nada más (R25/R20):
+
+- **#1 (P1) — re-subida periódica con tope.** Nuevas constantes sin clave de config
+  `KO_WAKE_REPEAT_MS = 500` y `KO_WAKE_MAX_MS = 10000` en
+  [NexoDM_Constants.c:53](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/3_Game/NexoDM/NexoDM_Constants.c:53)
+  y [NexoDM_Constants.c:54](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/3_Game/NexoDM/NexoDM_Constants.c:54).
+  Tras la primera subida a 1000 ms, `NexoDM_KoWake` se reprograma a sí mismo cada 500 ms
+  (`CallLater(NexoDM_KoWake, KO_WAKE_REPEAT_MS, false)`) en
+  [NexoDM_PlayerBase.c:213](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:213),
+  así que un segundo impacto que baje el shock entre 1 s y el despertar vanilla (>2 s) vuelve
+  a quedar corregido en ≤500 ms y no devuelve un KO completo. Tope duro desde el inicio de
+  la inconsciencia (`m_NexoDM_KoStartMs`): si `elapsed >= KO_WAKE_MAX_MS` el callback sale
+  antes de subir el shock, y solo se reprograma si `elapsed + 500 < 10000`, en
+  [NexoDM_PlayerBase.c:191](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:191)
+  y [NexoDM_PlayerBase.c:213](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:213)
+  (subidas nominales a 1000, 1500, …, 9500 ms; nunca bucle infinito). Cada tick vuelve a
+  pasar todas las puertas antes de subir y de reprogramar, así que el bucle se para sin
+  reprogramar cuando despierta (`!IsUnconscious()`), muere (`!IsAlive()`) o está marcado
+  para borrado (`IsSetForDeletion()`); el borrado además sigue cancelando el pendiente en
+  el `EEDelete` ya existente, sin cambios, en
+  [NexoDM_PlayerBase.c:95](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:95).
+  La subida sigue siendo `SetHealth("", "Shock", GetMaxHealth("", "Shock"))` en
+  [NexoDM_PlayerBase.c:201](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:201),
+  con el mismo log `[NexoDM][KO] shock raised to max …` por subida.
+- **#2 (P2) — desconexión respetada.** Puerta `IsPlayerDisconnected()` (cita vanilla
+  `P:\scripts\4_world\entities\manbase\playerbase.c:2638`, puesto a `true` por
+  `PlayerBase.OnDisconnect()` en `playerbase.c:7665`, leída en esta copia) en los dos
+  únicos puntos de actuación: al arrancar la inconsciencia, antes de guardar la hora,
+  loguear o programar nada, en
+  [NexoDM_PlayerBase.c:138](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:138),
+  y en cada tick de `NexoDM_KoWake`, antes de subir el shock y sin reprogramar, en
+  [NexoDM_PlayerBase.c:172](/C:/Users/guill/Repos/Nexo-Deathmatch/NexoDM/scripts/4_World/NexoDM/NexoDM_PlayerBase.c:172).
+  Si un cuerpo se desconecta mientras está KO, el siguiente tick (≤500 ms) sale por esta
+  puerta sin tocar el shock: se respeta la muerte vanilla por combat-log y no se le
+  resucita el shock a un cuerpo desconectado.
+
+Sin cambios en ningún otro fichero ni comportamiento (R25); sin renombres ni limpieza de
+lo preexistente (R20). Sigue sin poder verificarse compilación ni in-game en este encargo
+(solo ficheros, sin shell ni git): pendiente el mismo compile-check de arranque buscando
+las líneas `[NexoDM][KO]` repetidas cada ~500 ms hasta despertar o hasta el tope de 10 s.
